@@ -96,7 +96,7 @@ export default async function HomePage() {
     <AppShell>
       <HeroBanner slides={data.heroSlides} />
 
-      <div className="relative z-10 -mt-20 space-y-10 pb-16 sm:-mt-28 lg:-mt-32">
+      <div className="relative z-10 -mt-8 space-y-10 pb-16 sm:-mt-12 lg:-mt-16">
         <ContinueWatchingRow />
         <ContentRow title="Trending Now" items={data.trending} />
         <ContentRow title="Recently Added" items={data.recentlyAdded} />

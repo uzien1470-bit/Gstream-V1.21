@@ -68,7 +68,7 @@ export function HeroBanner({ slides }: HeroBannerProps) {
 
       {/* Content */}
       <div className="absolute inset-0 flex items-end">
-        <div className="mx-auto w-full max-w-[1600px] px-4 pb-16 sm:px-6 lg:px-10 lg:pb-24">
+        <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 sm:px-6 sm:pb-32 lg:px-10 lg:pb-40">
           <div className="max-w-2xl">
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <Badge className="bg-primary text-primary-foreground">Featured</Badge>
@@ -143,7 +143,7 @@ export function HeroBanner({ slides }: HeroBannerProps) {
           </button>
 
           {/* Dots */}
-          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+          <div className="absolute bottom-8 right-6 z-20 flex gap-2 sm:right-10">
             {slides.map((_, i) => (
               <button
                 key={i}

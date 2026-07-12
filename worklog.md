@@ -115,3 +115,24 @@ Stage Summary:
 - Gstream is production-ready and fully verified end-to-end via Agent Browser
 - All features working: auth, content browsing, instant search, iframe streaming with server switching, episodes, user features, complete admin panel
 - Demo credentials: admin@gstream.com/admin123 (admin), user@gstream.com/user123 (user)
+
+---
+Task ID: 12
+Agent: main
+Task: Fix hero button overlap + broken images; document backend & Supabase/Vercel path
+
+Work Log:
+- Diagnosed hero overlap: content rows used -mt-32 negative margin, pulling "Trending Now" title into the hero's Play/More Info buttons + centered pagination dots
+- Fixed hero-banner.tsx: increased content bottom padding (pb-28/32/40), moved pagination dots from bottom-center to bottom-right corner
+- Fixed home page: reduced negative margin to -mt-8/-mt-12/-mt-16 (gentle overlap, well below buttons)
+- Diagnosed broken images: 3 anime (Jujutsu Kaisen, Death Note, One Piece) had rotten TMDB paths returning 404
+- Used image-search skill to fetch stable OSS-hosted poster/backdrop URLs; found working TMDB posters for JJK + One Piece
+- Wrote prisma/patch-images.ts to update the 3 series' posterUrl + backdropUrl + season posters in the live DB
+- Updated prisma/seed.ts with corrected URLs so future re-seeds are clean
+- Verified via Agent Browser: 0 broken images on home + anime pages; VLM confirms hero buttons now cleanly separated
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- Hero layout fixed (buttons no longer overlap row titles or dots)
+- All poster/backdrop images now load (0 broken)
+- Backend: Prisma + SQLite (local). Path to Supabase + Vercel documented for user.
