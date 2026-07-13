@@ -10,7 +10,10 @@ async function countRows(
   let q = supabase.from(table).select('*', { count: 'exact', head: true })
   if (filter) q = q.eq(filter.column, filter.value)
   const { count, error } = await q
-  if (error || count === null) return 0
+  if (error || count === null) {
+    console.error('[admin/stats] count failed for', table, ':', error?.message ?? 'unknown error')
+    return 0
+  }
   return count
 }
 
@@ -57,7 +60,8 @@ export async function GET() {
         .order('watchedAt', { ascending: false })
         .limit(10)
       if (!error && data) recentActivity = data as any[]
-    } catch {
+    } catch (err: any) {
+      console.error('[admin/stats] recentActivity failed:', err?.message ?? 'unknown error')
       recentActivity = []
     }
 

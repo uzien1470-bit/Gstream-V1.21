@@ -1,0 +1,375 @@
+     1→     1→# Gstream — Premium OTT Streaming Platform Worklog
+     2→     2→
+     3→     3→This file tracks all work done on the Gstream project. Each agent appends a section below.
+     4→     4→
+     5→     5→---
+     6→     6→Task ID: 1
+     7→     7→Agent: main
+     8→     8→Task: Foundation — Prisma schema, data access layer, auth, layout/theme, providers
+     9→     9→
+    10→    10→Work Log:
+    11→    11→- Designed complete Prisma schema for OTT platform
+    12→    12→- (in progress)
+    13→    13→
+    14→    14→Stage Summary:
+    15→    15→- Prisma schema designed: User, Session, PasswordToken, Genre, Category, StreamingServer, Movie, MovieServer, Series, Season, Episode, EpisodeServer, FeaturedBanner, MyList, WatchHistory, WatchProgress
+    16→    16→- Auth system: session-based with bcrypt, role-based (user/admin), single admin enforced
+    17→    17→- Data access layer (src/lib/content.ts): movie/series cards, detail, recommendations, search, continue-watching
+    18→    18→- Seed data (prisma/seed.ts): 20 movies, 7 TV series, 6 anime with seasons/episodes, 6 streaming servers, real TMDB image URLs, YouTube embed URLs for working demo player. Admin: admin@gstream.com/admin123, User: user@gstream.com/user123
+    19→    19→- Global theme: cinematic dark (crimson/gold on near-black), glassmorphism, Playfair display font
+    20→    20→- Core components: SmartImage (fallback), SiteHeader (sticky transparent), SiteFooter (sticky bottom), AppShell, ContentCard (hover animations), ContentRow (horizontal scroll w/ arrows), HeroBanner (carousel), ContinueWatchingRow, ListingGrid, PageHeader, AuthShell
+    21→    21→- API routes: auth (register/login/logout/me/forgot-password/reset-password), my-list (check/toggle/list), watch (progress/history/continue), search, genres, profile (update/change-password)
+    22→    22→- Pages built: Home, Movies, TV Series, Anime, Search (instant), Watch (iframe embed + server selector + episodes + related), Login, Register, Forgot Password, Reset Password, Profile, My List, Watch History, 404
+    23→    23→- Dev server running on port 3000 (setsid-detached)
+    24→    24→
+    25→    25→---
+    26→    26→Task ID: 10-A
+    27→    27→Agent: admin-simple-managers
+    28→    28→Task: Built 5 admin management pages (Genres, Categories, Streaming Servers, Featured Banners, Users) with full CRUD API routes, dialogs, delete confirmation, sonner toasts, and admin self-protection rules.
+    29→    29→
+    30→    30→Work Log:
+    31→    31→- Read existing admin dashboard, AdminShell, auth lib, Prisma schema, and existing /api/admin/content route to match patterns.
+    32→    32→- Created 5 list+create API routes: /api/admin/{genres,categories,servers,banners,users}/route.ts (all call requireAdmin(), wrap in try/catch returning 401).
+    33→    33→- Created 5 by-id PUT/DELETE API routes under /api/admin/{...}/[id]/route.ts using `params: Promise<{ id: string }>` (Next.js 16).
+    34→    34→- Slug auto-derived in genres/categories/servers via `name.toLowerCase().replace(/[^a-z0-9]+/g,'-')`.
+    35→    35→- Genre/Category endpoints handle unique-constraint (P2002) and not-found (P2025) errors with friendly messages.
+    36→    36→- Banner list endpoint includes related movie/series for the "Linked Content" column.
+    37→    37→- Users list endpoint supports `?q=` search (email/name contains), pagination (20 per page), excludes passwordHash, returns currentUserId so the page can hide self-harm actions.
+    38→    38→- Users by-id PUT/DELETE enforce the protection rules: cannot suspend any admin, cannot suspend self, cannot delete any admin, cannot delete self, cannot demote the last remaining admin.
+    39→    39→- Built 5 client pages under /app/admin/{genres,categories,servers,banners,users}/page.tsx — all use AdminShell, shadcn/ui (Card, Table, Dialog, AlertDialog, Input, Label, Button, Select, Switch, Badge, Textarea, Avatar), sonner toast, lucide-react icons.
+    40→    40→- Each page: header with title + Add New button, responsive table (overflow-x-auto), create/edit Dialog with validation, delete AlertDialog confirmation, loading spinners, empty states.
+    41→    41→- Banners page fetches movies + series + anime via the existing /api/admin/content endpoint, exposes a type selector (none/movie/series) with conditional Select dropdowns for linked content.
+    42→    42→- Users page: debounced search input, prev/next pagination, role badges (admin/user), status badges (active/suspended), Suspend/Activate toggle, Role change dialog, Delete with confirm — self and admin actions disabled with tooltips.
+    43→    43→- Started dev server with `setsid -f node node_modules/next/dist/bin/next dev -p 3000` (dev.log was stale).
+    44→    44→- Verified all 5 API routes return 401 unauthenticated and compile cleanly. Logged in as admin@gstream.com and verified each route returns data; tested CRUD on genres + banners; tested admin protection rules (suspend admin / delete admin / demote last admin all blocked with friendly errors).
+    45→    45→- Verified all 5 admin pages return HTTP 200 and compile cleanly in dev.log (no TypeScript errors).
+    46→    46→
+    47→    47→Stage Summary:
+    48→    48→- Files created (15 total):
+    49→    49→  - src/app/api/admin/genres/route.ts + [id]/route.ts
+    50→    50→  - src/app/api/admin/categories/route.ts + [id]/route.ts
+    51→    51→  - src/app/api/admin/servers/route.ts + [id]/route.ts
+    52→    52→  - src/app/api/admin/banners/route.ts + [id]/route.ts
+    53→    53→  - src/app/api/admin/users/route.ts + [id]/route.ts
+    54→    54→  - src/app/admin/genres/page.tsx
+    55→    55→  - src/app/admin/categories/page.tsx
+    56→    56→  - src/app/admin/servers/page.tsx
+    57→    57→  - src/app/admin/banners/page.tsx
+    58→    58→  - src/app/admin/users/page.tsx
+    59→    59→- All admin nav links in AdminShell now resolve to working pages.
+    60→    60→- API conventions: try/catch around requireAdmin() → 401 JSON { error }, P2002 → 409, P2025 → 404, validation → 400.
+    61→    61→- User protection rules enforced server-side (defense in depth beyond client-side disabling).
+    62→    62→- Dev log shows zero TypeScript errors after compiling all 15 new files plus the existing routes they hit (/api/admin/content for movie/series lists in the banners page).
+    63→    63→- Dev server now running detached on port 3000 via setsid.
+    64→    64→
+    65→    65→---
+    66→    66→Task ID: 10-B
+    67→    67→Agent: main
+    68→    68→Task: Admin content manager (movies/tv-series/anime), seasons, episodes pages + API routes
+    69→    69→
+    70→    70→Work Log:
+    71→    71→- Built admin content CRUD API: /api/admin/content (GET list, POST), /api/admin/content/[id] (GET, PUT, DELETE) handling movie & series & anime
+    72→    72→- Built ContentManager component (shared for movies/tv-series/anime) with full create/edit dialog: title, slug, synopsis, poster/backdrop/logo URLs, year, rating, votes, trailer, genres (multi-select chips), categories (multi-select), flags (featured/trending/popular/topRated switches), cast JSON, and streaming servers editor (movie only — add/remove server rows with server selector + embed URL + quality + status)
+    73→    73→- Built seasons API (/api/admin/seasons + [id]) and seasons admin page with series picker, season number, title, description, poster
+    74→    74→- Built episodes API (/api/admin/episodes + [id]) and episodes admin page with season filter, episode editor + streaming servers manager
+    75→    75→- All wrapped in AdminShell (admin-only, sidebar nav, mobile sheet)
+    76→    76→- Fixed JSX nesting bug in watch-client (</span> vs </svg>)
+    77→    77→- Fixed all ESLint errors: admin-shell component-during-render, setState-in-effect patterns (converted to render-time reset pattern per React docs)
+    78→    78→- Final lint: 0 errors, 0 warnings
+    79→    79→
+    80→    80→Stage Summary:
+    81→    81→- Complete admin panel: dashboard (stats + recent activity), movies/tv-series/anime CRUD with servers, seasons CRUD, episodes CRUD with servers, genres/categories/servers/banners/users CRUD (subagent), user suspend/delete/role with protection rules
+    82→    82→- All admin API routes enforce requireAdmin()
+    83→    83→- Single-admin protection enforced at registration; admin cannot be deleted/suspended/demoted
+    84→    84→
+    85→    85→---
+    86→    86→Task ID: 11
+    87→    87→Agent: main
+    88→    88→Task: Lint, dev server, Agent Browser verification, fixes
+    89→    89→
+    90→    90→Work Log:
+    91→    91→- Fixed JSX nesting bug in watch-client.tsx (</span> → </svg>)
+    92→    92→- Fixed all ESLint errors:
+    93→    93→  - admin-shell: moved inline component to render variable (Cannot create components during render)
+    94→    94→  - smart-image, embed-player, watch-client: converted setState-in-effect to React-recommended render-time reset pattern
+    95→    95→  - Renamed lucide Image import to ImageIcon in banners page (false-positive alt-text)
+    96→    96→  - Auto-fixed unused eslint-disable directives
+    97→    97→- Restructured search page: server component renders AppShell wrapping client SearchClient (fixed "Element type is invalid" error from server-component-in-client import)
+    98→    98→- Agent Browser verification (all passed):
+    99→    99→  - Home page: hero carousel (Dune/Batman/Oppenheimer/Breaking Bad/Stranger Things), 9 content rows, all images loading from TMDB CDN
+   100→   100→  - Login: demo account buttons fill credentials, login redirects to home
+   101→   101→  - Watch movie: iframe player + 6 server selector (VidFast/Filemoon/StreamWish/VidHide/MixDrop/Voe), server switching verified (iframe src changes without page refresh), synopsis/genres/cast/recommendations
+   102→   102→  - Watch series: episode selector sidebar with seasons accordion, Playing badge on active episode, Previous/Next navigation verified (e=2 → e=3)
+   103→   103→  - Search: instant search ("dune" → 1 result), type tabs, genre/year filters
+   104→   104→  - Profile: shows Administrator badge, Edit Profile + Change Password forms, avatar picker
+   105→   105→  - My List + Watch History: render correctly with content
+   106→   106→  - Admin dashboard: 11 nav items, stat cards (20 movies, 7 series, 6 anime, 17 seasons)
+   107→   107→  - Admin movies: management table with all movies
+   108→   108→  - Admin users: shows protection rules (admin cannot be deleted, "You" badge)
+   109→   109→  - 404 page: "Lost in the stream" with navigation
+   110→   110→  - Mobile viewport (390x844): hamburger menu, responsive layout
+   111→   111→- VLM verification of home screenshot: confirmed premium dark cinematic theme, hero banner, content rows
+   112→   112→- Final: 0 lint errors, 0 warnings; all 22 routes return 200
+   113→   113→
+   114→   114→Stage Summary:
+   115→   115→- Gstream is production-ready and fully verified end-to-end via Agent Browser
+   116→   116→- All features working: auth, content browsing, instant search, iframe streaming with server switching, episodes, user features, complete admin panel
+   117→   117→- Demo credentials: admin@gstream.com/admin123 (admin), user@gstream.com/user123 (user)
+   118→   118→
+   119→   119→---
+   120→   120→Task ID: 12
+   121→   121→Agent: main
+   122→   122→Task: Fix hero button overlap + broken images; document backend & Supabase/Vercel path
+   123→   123→
+   124→   124→Work Log:
+   125→   125→- Diagnosed hero overlap: content rows used -mt-32 negative margin, pulling "Trending Now" title into the hero's Play/More Info buttons + centered pagination dots
+   126→   126→- Fixed hero-banner.tsx: increased content bottom padding (pb-28/32/40), moved pagination dots from bottom-center to bottom-right corner
+   127→   127→- Fixed home page: reduced negative margin to -mt-8/-mt-12/-mt-16 (gentle overlap, well below buttons)
+   128→   128→- Diagnosed broken images: 3 anime (Jujutsu Kaisen, Death Note, One Piece) had rotten TMDB paths returning 404
+   129→   129→- Used image-search skill to fetch stable OSS-hosted poster/backdrop URLs; found working TMDB posters for JJK + One Piece
+   130→   130→- Wrote prisma/patch-images.ts to update the 3 series' posterUrl + backdropUrl + season posters in the live DB
+   131→   131→- Updated prisma/seed.ts with corrected URLs so future re-seeds are clean
+   132→   132→- Verified via Agent Browser: 0 broken images on home + anime pages; VLM confirms hero buttons now cleanly separated
+   133→   133→- Lint: 0 errors, 0 warnings
+   134→   134→
+   135→   135→Stage Summary:
+   136→   136→- Hero layout fixed (buttons no longer overlap row titles or dots)
+   137→   137→- All poster/backdrop images now load (0 broken)
+   138→   138→- Backend: Prisma + SQLite (local). Path to Supabase + Vercel documented for user.
+   139→   139→
+   140→   140→---
+   141→   141→Task ID: 13
+   142→   142→Agent: main
+   143→   143→Task: Re-theme entire app to premium purple/violet on black (no logic changes)
+   144→   144→
+   145→   145→Work Log:
+   146→   146→- Converted target hex palette to precise OKLCH: #7C3AED→oklch(0.541 0.247 293), #A855F7→oklch(0.627 0.233 304), #0A0A0A→oklch(0.145 0 0), #121212→oklch(0.182 0 0)
+   147→   147→- Rewrote src/app/globals.css :root tokens (background, card, popover, primary, secondary, muted, accent, ring, charts, sidebar) to purple/violet-on-black
+   148→   148→- Updated utilities: .glass, .glass-strong, .text-glow, .cinema-gradient, .hero-fade-*, .shimmer, scrollbar, selection, focus-visible ring — all now violet-tinted
+   149→   149→- Fixed 3 hardcoded crimson oklch(0.62 0.22 16) references: not-found.tsx radial gradient, auth-shell.tsx gradient panel, (text-glow already in CSS)
+   150→   150→- Admin dashboard: swapped "Movies" stat card icon tint from text-rose-400 → text-violet-400 (brand-aligned); kept other decorative icon tints (amber/emerald/sky/cyan/etc.) for stat-card distinction; kept semantic rose for suspended-state badges (destructive convention)
+   151→   151→- Kept amber for ratings/stars (gold = universal ratings convention, provides contrast against purple)
+   152→   152→- NO changes to: business logic, database code, Prisma, auth, API routes, routing, component structure, or functionality
+   153→   153→- Verified: dev server picked up CSS (had to force recompile to clear stale cache); pixel-sampled Play Now button = #7f3be7 (matches #7C3AED); VLM confirmed purple/violet-on-black across all 6 key pages (home, login, admin dashboard, admin movies, watch, search, profile)
+   154→   154→- Lint: 0 errors, 0 warnings; all 16 checked routes return 200
+   155→   155→
+   156→   156→Stage Summary:
+   157→   157→- Entire design system re-themed to premium purple (#7C3AED) + violet (#A855F7) on black (#0A0A0A) with dark-gray (#121212) surfaces and white text
+   158→   158→- All components (buttons, cards, forms, nav, modals, admin dashboard) follow automatically via semantic CSS tokens
+   159→   159→- Contrast, accessibility, and responsive behavior preserved
+   160→   160→- Zero functional changes — only CSS variables + 3 gradient color references updated
+   161→   161→
+   162→   162→---
+   163→   163→Task ID: 14
+   164→   164→Agent: main
+   165→   165→Task: Fix Radix Sheet hydration mismatch (aria-controls ID mismatch on mobile menu)
+   166→   166→
+   167→   167→Work Log:
+   168→   168→- Diagnosed: Radix <Sheet> in SiteHeader always rendered in SSR tree; its internal useId() generated aria-controls IDs (radix-_R_xxx) that diverged between server and client → hydration mismatch error
+   169→   169→- Root cause: Radix components use React useId() for aria-controls/aria-labelledby; when present in SSR HTML, IDs can mismatch on client hydration
+   170→   170→- Fix: gated the Sheet (mobile menu) behind a `mounted` flag so it only renders on the client; rendered a static placeholder <div> (same dimensions, lg:hidden) during SSR to preserve layout
+   171→   171→- Used queueMicrotask(() => setMounted(true)) in render body (not in useEffect) to avoid the react-hooks/set-state-in-effect lint error while still deferring the state flip until after hydration completes
+   172→   172→- DropdownMenu (user menu) not affected — it only renders when `user` is non-null, and user starts null on both server and client (cachedUser stays null during SSR), so it's never in the SSR tree
+   173→   173→- Verified via Agent Browser: 0 hydration errors, 0 console errors, 0 page errors; mobile menu button renders at 800px viewport and opens correctly showing all nav items + auth buttons
+   174→   174→- Lint: 0 errors, 0 warnings
+   175→   175→
+   176→   176→Stage Summary:
+   177→   177→- Hydration mismatch resolved — the mobile Sheet menu now mounts client-only, eliminating the Radix useId server/client divergence
+   178→   178→- No functional changes — mobile menu works identically, just renders one frame later (imperceptible)
+   179→   179→
+   180→   180→---
+   181→   181→Task ID: 15
+   182→   182→Agent: main
+   183→   183→Task: Replace inline SVG brand mark with uploaded logo across all placements
+   184→   184→
+   185→   185→Work Log:
+   186→   186→- Analyzed uploaded logo (1254x1254 PNG, square icon, purple-to-red gradient play/triangle on dark bg, no text) via VLM
+   187→   187→- Copied to public/logo.png for static serving
+   188→   188→- Created reusable BrandMark component (src/components/layout/brand-mark.tsx) — renders logo image + "Gstream" wordmark with configurable sizes, used by all placements
+   189→   189→- Replaced inline SVG play-icon brand marks in 5 locations:
+   190→   190→  1. SiteHeader desktop (header logo)
+   191→   191→  2. SiteHeader mobile sheet title
+   192→   192→  3. SiteFooter brand
+   193→   193→  4. AuthShell desktop left panel (login/register/forgot/reset)
+   194→   194→  5. AuthShell mobile top logo
+   195→   195→  6. WatchClient top bar
+   196→   196→- Replaced Shield-icon brand mark in AdminShell sidebar with logo (kept "Admin" badge)
+   197→   197→- Updated root layout favicon: /logo.svg → /logo.png (also added apple icon)
+   198→   198→- Verified: 0 leftover inline SVG play-icon brand marks; logo.png loads on home (header+footer), login (2x), watch (1x), admin (sidebar); VLM confirmed logo clearly visible & well-sized in header
+   199→   199→- Lint: 0 errors, 0 warnings; all 9 checked routes return 200
+   200→   200→
+   201→   201→Stage Summary:
+   202→   202→- Brand identity unified — the uploaded logo now appears everywhere the Gstream brand mark is shown (header, footer, auth pages, watch top bar, admin sidebar, browser favicon, apple touch icon)
+   203→   203→- Reusable BrandMark component ensures consistency and easy future updates (change one file to rebrand)
+   204→   204→
+   205→   205→---
+   206→   206→Task ID: 16
+   207→   207→Agent: main
+   208→   208→Task: Migrate Prisma SQLite → Supabase PostgreSQL; replace custom auth with Supabase Auth; add Supabase Storage; ready for Vercel
+   209→   209→
+   210→   210→Work Log:
+   211→   211→- Installed @supabase/supabase-js + @supabase/ssr; removed bcryptjs (no longer needed)
+   212→   212→- Rewrote prisma/schema.prisma: provider sqlite→postgresql; removed passwordHash, Session, PasswordToken models (Supabase manages auth); kept User as profile table (id = Supabase auth UUID)
+   213→   213→- Generated Postgres migration SQL via `prisma migrate diff --from-empty --to-schema-datamodel` → prisma/migrations/0_init/migration.sql (461 lines)
+   214→   214→- Created supabase/setup.sql: storage buckets (posters/backdrops/avatars/uploads), auth→profile trigger (auto-creates public.User row on signup), RLS policies (public catalogue read, owner-only user activity, admin-only writes)
+   215→   215→- Created Supabase client helpers: server.ts (@supabase/ssr createServerClient with cookies), client.ts (browser singleton), admin.ts (service-role, server-only), configured.ts (isSupabaseConfigured env-var gate)
+   216→   216→- Rewrote src/lib/auth.ts: getSessionUser() reads Supabase session → fetches Prisma profile; requireAuth()/requireAdmin() keep same signatures so API routes unchanged; added authErrorStatus() helper
+   217→   217→- Rewrote auth API routes: register (supabase.auth.signUp), login (signInWithPassword + profile status check), logout (signOut), me (getUser + Prisma profile), forgot-password (resetPasswordForEmail), reset-password (updateUser password)
+   218→   218→- Rewrote profile API: change-password (verify via re-signin, then updateUser), update (Prisma profile + sync name to auth metadata), avatar upload (POST /api/profile/avatar → Supabase Storage avatars bucket)
+   219→   219→- Added admin upload route (POST /api/admin/upload → admin-only, service-role client, posters/backdrops/uploads buckets)
+   220→   220→- Updated admin users DELETE to also call supabase.auth.admin.deleteUser (Prisma only manages the profile; auth.users is Supabase-managed)
+   221→   221→- Updated reset-password page to work with Supabase recovery flow (token in email link, no manual token entry needed)
+   222→   222→- Updated seed.ts: removed bcrypt; uses createAdminSupabaseClient().auth.admin.createUser for admin + demo users; promotes admin role in profile table
+   223→   223→- Created isSupabaseConfigured gate + SupabaseSetupScreen component (5-step setup guide with logo, links to Supabase dashboard)
+   224→   224→- Gated all server-rendered pages (home, movies, tv-series, anime, search, watch) to show setup screen when Supabase env vars missing — app degrades gracefully instead of crashing
+   225→   225→- Created .env.example (5 vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, DIRECT_URL)
+   226→   226→- Updated next.config.ts: added image remotePatterns for TMDB, sfile.chatglm.cn, dicebear, *.supabase.co
+   227→   227→- Updated package.json scripts: added db:seed, db:migrate:dev, supabase:setup
+   228→   228→- Created DEPLOYMENT.md: 6-step guide (create Supabase, set env vars, db:push, run setup.sql, seed, deploy to Vercel) + architecture table + storage/auth explanations + troubleshooting
+   229→   229→- Verified via Agent Browser: dev server runs without Supabase creds; all pages show setup screen (200 status, correct titles); VLM confirmed setup screen is clear with numbered steps + logo
+   230→   230→- Lint: 0 errors, 0 warnings
+   231→   231→
+   232→   232→Stage Summary:
+   233→   233→- Full migration to Supabase complete: PostgreSQL via Prisma (schema + migration SQL), Supabase Auth (replacing bcrypt sessions), Supabase Storage (upload routes for posters/backdrops/avatars)
+   234→   234→- Prisma remains the ORM for all DB access (no @supabase/supabase-js for queries, per requirement)
+   235→   235→- App is Vercel-ready: set 5 env vars, run db:push + supabase/setup.sql + db:seed, deploy
+   236→   236→- Without Supabase creds, app shows a helpful 5-step setup screen (no crashes)
+   237→   237→- Demo credentials (after seeding): admin@gstream.com/admin123, user@gstream.com/user123
+   238→   238→
+   239→   239→---
+   240→   240→Task ID: 5
+   241→   241→Agent: admin-routes-supabase
+   242→   242→Task: Migrate 17 admin API routes from Prisma to Supabase
+   243→   243→
+   244→   244→Work Log:
+   245→   245→- Read worklog + reference patterns: src/lib/supabase/admin.ts (service-role createAdminSupabaseClient), src/lib/auth.ts (requireAdmin/requireAuth unchanged), src/app/api/my-list/toggle/route.ts (existing Supabase route pattern), src/lib/content.ts (PostgREST nested-relation syntax), prisma/schema.prisma (column names + junction tables).
+   246→   246→- Read all 17 existing Prisma admin route files to map every query (findMany, findUnique, create, update, delete, count, _count, include, OR, P2002/P2025 handling) before rewriting.
+   247→   247→- Migrated stats/route.ts: replaced 15 Promise.all db.X.count() calls with a countRows() helper using supabase.from(table).select('*', { count:'exact', head:true }); replaced watchHistory.findMany include with PostgREST nested select '*, user:User(name, email), movie:Movie(title), series:Series(title), episode:Episode(title, episodeNumber)'; wrapped in try/catch returning 500 on failure; recent activity query wrapped in its own try/catch so a failure still returns zero-activity stats; normalized watchedAt via new Date(...).toISOString().
+   248→   248→- Migrated content/route.ts: GET uses range() for pagination, count:'exact' for total, PostgREST '*, genres:Genre!Movie_genres(name), servers:MovieServer(*, server:StreamingServer(*))' for movies / '*, genres:Genre!Series_genres(name), seasons:Season(*)' for series; for series, computes per-season episode counts in a second Episode query and attaches as _count.episodes (frontend ContentItem shape). POST inserts the Movie/Series row, then manually inserts Movie_genres / Movie_categories / Series_genres / Series_categories junction rows + MovieServer rows for movies.
+   249→   249→- Migrated content/[id]/route.ts: GET uses maybeSingle() and explicit junction select 'genres:Genre!Movie_genres(*), categories:Category!Movie_categories(*), servers:MovieServer(*, server:StreamingServer(*))' for movies / 'seasons:Season(*, episodes:Episode(*))' for series (then sorts client-side by seasonNumber/episodeNumber). PUT updates the row then deletes+re-inserts junction rows (Movie_genres, Movie_categories, Series_genres, Series_categories) and MovieServer rows. DELETE just removes from Movie/Series table.
+   250→   250→- Migrated seasons/route.ts: GET supports seriesId filter + q search (fetches matching series ids, then in(...) on Season); for each season includes series:Series(id, title, type, posterUrl) and computes _count.episodes via a second Episode query. POST verifies the Series exists (404 if not), inserts the Season, and bumps Series.recentlyUpdated=true.
+   251→   251→- Migrated seasons/[id]/route.ts: PUT/DELETE via update()/delete() on Season, returning 404 when update yields no row or delete count is 0.
+   252→   252→- Migrated episodes/route.ts: GET supports seasonId filter, ordered by seasonId then episodeNumber, includes 'season:Season(*, series:Series(id, title, type)), servers:EpisodeServer(*, server:StreamingServer(*))'. POST verifies Season exists then inserts Episode + EpisodeServer rows.
+   253→   253→- Migrated episodes/[id]/route.ts: GET/PUT/DELETE — GET returns 404 when maybeSingle() is null; PUT updates then replaces EpisodeServer rows; DELETE removes the Episode.
+   254→   254→- Migrated genres/route.ts + [id]/route.ts: GET ordered by name asc; POST/PUT insert/update with 23505 → 409 "name or slug already exists"; DELETE returns 404 when delete count===0 (replaces Prisma P2025).
+   255→   255→- Migrated categories/route.ts + [id]/route.ts: same pattern as genres; supports optional `icon` field on POST/PUT (null when blank).
+   256→   256→- Migrated servers/route.ts + [id]/route.ts: GET ordered by priority asc then name asc; supports name/priority/status updates; 23505 → 409, 0-row delete → 404.
+   257→   257→- Migrated banners/route.ts + [id]/route.ts: GET includes 'movie:Movie(id, title), series:Series(id, title)' and orders by order asc, createdAt desc; POST/PUT/DELETE same patterns; 0-row delete → 404.
+   258→   258→- Migrated users/route.ts: GET selects profile fields (id, email, name, avatarUrl, role, status, createdAt, updatedAt) — NO passwordHash (doesn't exist); supports ?q= search via email/name ilike; pagination via range(); returns currentUserId from requireAdmin(); excludes nothing else. (Drop-in identical response shape.)
+   259→   259→- Migrated users/[id]/route.ts: PUT preserves all protection rules (cannot suspend admin / cannot suspend self / cannot demote last admin — last-admin check now uses supabase count:'exact', head:true); DELETE preserves (cannot delete admin / cannot delete self) and calls supabase.auth.admin.deleteUser(id) (ON DELETE CASCADE removes the profile row); wrapped a fallback profile-row delete in try/catch (supabase query builder doesn't expose .catch on PromiseLike, so used try/catch). No passwordHash reference anywhere.
+   260→   260→- Ran grep for '@/lib/db' across src/app/api/admin/ → no matches. Ran grep for '@/lib/db' across src/app/api/ → no matches.
+   261→   261→- Ran `bun run lint` → EXIT 0, no errors, no warnings.
+   262→   262→- Probed every admin route (9 list GET + 9 POST + 8 by-id PUT + 8 by-id DELETE = 34 requests) on the live dev server; all returned 401 (auth required) or 405 (POST /api/admin/users — no POST handler, by design) confirming every file compiles cleanly via Next.js on-demand; no errors in dev.log.
+   263→   263→
+   264→   264→Stage Summary:
+   265→   265→- All 17 admin API routes successfully migrated from Prisma to @supabase/supabase-js via createAdminSupabaseClient (service-role, bypasses RLS):
+   266→   266→  - src/app/api/admin/stats/route.ts
+   267→   267→  - src/app/api/admin/content/route.ts + [id]/route.ts
+   268→   268→  - src/app/api/admin/seasons/route.ts + [id]/route.ts
+   269→   269→  - src/app/api/admin/episodes/route.ts + [id]/route.ts
+   270→   270→  - src/app/api/admin/genres/route.ts + [id]/route.ts
+   271→   271→  - src/app/api/admin/categories/route.ts + [id]/route.ts
+   272→   272→  - src/app/api/admin/servers/route.ts + [id]/route.ts
+   273→   273→  - src/app/api/admin/banners/route.ts + [id]/route.ts
+   274→   274→  - src/app/api/admin/users/route.ts + [id]/route.ts
+   275→   275→- Frontend admin components (ContentManager, seasons/episodes/genres/categories/servers/banners/users pages) untouched — all response shapes preserved (genres:[{name}], seasons:[{...,_count:{episodes:N}}], servers:[{server:{...}}], recentActivity:[{watchedAt,user,title,episode,contentType}], items/total/page/limit/currentUserId etc.).
+   276→   276→- Many-to-many relations (Movie↔Genre, Movie↔Category, Series↔Genre, Series↔Category) implemented via manual junction inserts into Movie_genres / Movie_categories / Series_genres / Series_categories (delete-then-insert on update).
+   277→   277→- Streaming server rows (MovieServer, EpisodeServer) replaced via delete+insert on create-with-servers / update-with-servers.
+   278→   278→- Prisma error codes mapped: P2002 → error.code === '23505' (409), P2025 → maybeSingle() null OR delete count===0 (404).
+   279→   279→- All admin self/last-admin protection rules preserved in users/[id]/route.ts.
+   280→   280→- No @/lib/db imports remain anywhere under src/app/api/. Lint passes with 0 errors. Dev server compiles every admin route on-demand without errors.
+   281→   281→
+   282→   282→---
+   283→   283→Task ID: MIGRATION-FINAL
+   284→   284→Agent: main
+   285→   285→Task: Backend-only migration to Supabase — restore full app, replace Prisma with @supabase/supabase-js, no setup screen
+   286→   286→
+   287→   287→Work Log:
+   288→   288→- Removed SupabaseSetupScreen, SupabaseGate, and all page gates — every page renders unconditionally
+   289→   289→- Fixed content.ts PostgREST M2M query syntax: `genres:Genre!Movie_genres(name)` (aliased table name + junction hint)
+   290→   290→- Delegated 17 admin API route rewrites to subagent (all converted from Prisma to createAdminSupabaseClient)
+   291→   291→- Rewrote prisma/seed.ts: removed all Prisma calls, uses createAdminSupabaseClient for all DB ops + auth.admin.createUser
+   292→   292→- Deleted src/lib/db.ts (Prisma client) and removed prisma + @prisma/client from package.json
+   293→   293→- Removed prisma/migrations/ (no longer needed), supabase/setup.sql (superseded by schema.sql), prisma/patch-images.ts, DEPLOYMENT.md
+   294→   294→- Created supabase/schema.sql: complete Postgres schema (15 tables + 4 junction tables), RLS policies, storage buckets (posters/backdrops/avatars/thumbnails), auth→profile trigger, updated_at triggers
+   295→   295→- Added AdminSupabaseBanner component: small dismissible amber warning banner shown ONLY in admin dashboard when Supabase env vars missing; public site never affected
+   296→   296→- Added /api/health/supabase endpoint for the banner to check configuration status
+   297→   297→- Created .env.example (3 vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY — no DATABASE_URL needed since no Prisma)
+   298→   298→- Created README.md: 6-step guide (create Supabase, set env vars, import schema.sql, configure storage, seed, deploy to Vercel) + architecture + features + troubleshooting
+   299→   299→- Updated package.json: removed all Prisma scripts (db:push, db:generate, db:migrate, etc.), kept db:seed + supabase:setup
+   300→   300→- Fixed reset-password page export bug (ResetClient vs ResetPasswordPage naming collision)
+   301→   301→- Verified: 0 lint errors, 0 warnings; all 17 routes return 200; no console errors; no setup screen; no crashes; public site loads normally with empty data when Supabase unconfigured
+   302→   302→
+   303→   303→Stage Summary:
+   304→   304→- Full backend migrated to Supabase (@supabase/supabase-js for all DB access, Supabase Auth for authentication, Supabase Storage for images)
+   305→   305→- Prisma completely removed (dependency, client, db.ts, migrations)
+   306→   306→- All frontend pages, components, routing, styling, animations UNCHANGED
+   307→   307→- App never blocks: public site loads normally (empty data) when Supabase unconfigured; only a small dismissible warning banner in admin dashboard
+   308→   308→- Ready for Vercel: set 3 env vars, run supabase/schema.sql in SQL Editor, run bun run db:seed, deploy
+   309→   309→- Demo: admin@gstream.com/admin123, user@gstream.com/user123
+   310→   310→
+   311→   311→---
+   312→   312→Task ID: 17
+   313→   313→Agent: main
+   314→   314→Task: Fix "Can't perform React state update on unmounted component" in SiteHeader
+   315→   315→
+   316→   316→Work Log:
+   317→   317→- Root cause: queueMicrotask(() => setMounted(true)) in the render body fired before the component finished mounting, triggering a state update on an unmounted component (React 19 strictness)
+   318→   318→- Replaced with useSyncExternalStore-based useMounted() hook: returns false on server + initial hydration render, true on subsequent client renders — no side effects in render, no setState-in-effect, no microtasks
+   319→   319→- Pattern: const emptySubscribe = () => () => {}; useSyncExternalStore(emptySubscribe, () => true, () => false)
+   320→   320→- This preserves the original purpose: gating the Radix <Sheet> (mobile menu) client-side to avoid the aria-controls useId hydration mismatch
+   321→   321→- Verified via Agent Browser: 0 console errors, 0 page errors; mobile menu button renders at 800px viewport and opens correctly showing all nav items + auth buttons
+   322→   322→- Lint: 0 errors, 0 warnings
+   323→   323→
+   324→   324→Stage Summary:
+   325→   325→- React state-update error resolved; mobile menu works identically, just mounts one render later (imperceptible)
+   326→   326→
+   327→   327→---
+   328→   328→Task ID: 18
+   329→   329→Agent: main
+   330→   330→Task: Fix UUID/TEXT mismatches in Supabase schema (backend-only maintenance)
+   331→   331→
+   332→   332→Work Log:
+   333→   333→- Changed public."User".id from text → uuid (matches auth.users.id exactly)
+   334→   334→- Changed all userId FK columns to uuid: MyList.userId, WatchHistory.userId, WatchProgress.userId
+   335→   335→- Removed every auth.uid()::text cast → bare auth.uid() (13 occurrences across storage policies + RLS policies)
+   336→   336→- Removed u.id = auth.uid()::text → u.id = auth.uid() (storage admin-write policies)
+   337→   337→- Removed auth.uid()::text = id → auth.uid() = id (users_self_read, users_self_update, mylist/history/progress owner policies)
+   338→   338→- Removed auth.uid()::text = "userId" → auth.uid() = "userId" (6 owner-RLS policies)
+   339→   339→- Fixed handle_new_user(): new.id::text → new.id (UUID inserts into UUID directly)
+   340→   340→- Made schema fully idempotent: added DROP POLICY IF EXISTS before every CREATE POLICY (34 drops), DROP TRIGGER IF EXISTS (5 drops), CREATE OR REPLACE FUNCTION (2), CREATE TABLE IF NOT EXISTS (18), ON CONFLICT DO NOTHING for storage bucket inserts (2)
+   341→   341→- Fixed prisma/seed.ts delete sentinel: '00000000' → '00000000-0000-0000-0000-000000000000' (valid zero-UUID, works for both uuid and text columns — the old sentinel would fail PostgREST uuid cast on the User table)
+   342→   342→- NO frontend changes: UI, pages, components, styling, routing, player, admin interface all untouched
+   343→   343→- NO API behavior changes: TypeScript code already treats user IDs as strings (Supabase serializes UUIDs as strings over JSON), so no JS/TS changes needed
+   344→   344→- Verified: 0 ::text casts remain in schema; all userId columns uuid; handle_new_user uses bare new.id; 34 DROP POLICY IF EXISTS + 5 DROP TRIGGER IF EXISTS for idempotency; lint 0 errors; all 6 key routes return 200; no dev-server errors
+   345→   345→
+   346→   346→Stage Summary:
+   347→   347→- supabase/schema.sql now executes cleanly top-to-bottom on a fresh Supabase project AND is safe to re-run (idempotent)
+   348→   348→- No TEXT↔UUID mismatches remain anywhere: User.id is uuid, all userId FKs are uuid, auth.uid() compared directly, handle_new_user inserts bare new.id
+   349→   349→- prisma/seed.ts uses a valid zero-UUID sentinel safe for both uuid and text columns
+   350→   350→- Backend-only change: only supabase/schema.sql and prisma/seed.ts modified
+   351→   351→
+   352→   352→---
+   353→   353→Task ID: 19
+   354→   354→Agent: main
+   355→   355→Task: Debug prisma/seed.ts — Series inserts failing silently (backend-only)
+   356→   356→
+   357→   357→Work Log:
+   358→   358→- Root cause: every Supabase insert used `const { data } = await ...` and only checked `if (!data) continue` — the `error` field was never inspected, so failures were completely silent
+   359→   359→- Added `logInsert(label, table, row, select)` helper that: (a) checks both `data` AND `error`, (b) prints the exact Supabase error code, message, details, hint, and a truncated payload on failure, (c) returns null on failure
+   360→   360→- Added `logInsertMany(label, table, rows)` helper for batch junction-table inserts with the same error reporting
+   361→   361→- Replaced ALL 16 insert call sites (Genre, Category, StreamingServer, Movie, Series, Season, Episode, MovieServer, EpisodeServer, Movie_genres, Movie_categories, Series_genres, Series_categories, FeaturedBanner) to use the logging helpers
+   362→   362→- Added detailed progress logging for every entity type: "─ Inserting genres...", "✓ N/M genres inserted", per-row ✓/✗ markers
+   363→   363→- Added Series auto-recovery: if the full-payload insert fails, retries with a minimal payload (only NOT-NULL columns: title, slug, synopsis, posterUrl, backdropUrl, releaseYear, type, status, cast) to handle schema drift without skipping
+   364→   364→- Added env-var check at the TOP of main() BEFORE createAdminSupabaseClient() — prints "✗ Supabase env vars missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local" and exits cleanly instead of crashing with a cryptic stack trace
+   365→   365→- Refactored logInsert/logInsertMany to accept the supabase client as a parameter (avoids per-call client creation, ensures the env check runs first)
+   366→   366→- Added error checking on the delete-clean-slate loop and featured-content fetches (warns on error instead of silent failure)
+   367→   367→- NO frontend changes — only prisma/seed.ts modified
+   368→   368→- Verified: lint 0 errors; `bun run prisma/seed.ts` without creds prints clear error message; all 5 key routes return 200; no dev-server errors
+   369→   369→
+   370→   370→Stage Summary:
+   371→   371→- `bun run db:seed` now clearly reports the exact Supabase error (code, message, details, hint, payload) for ANY failed insert
+   372→   372→- Series inserts that fail due to schema mismatch auto-retry with a minimal payload before skipping
+   373→   373→- 54 console statements provide full visibility into seed progress (per-entity counts + per-row success/failure)
+   374→   374→- Running without Supabase credentials prints an actionable error instead of crashing
+   375→   375→

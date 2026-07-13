@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const servers: any[] = Array.isArray(body.servers) ? body.servers : []
     for (const s of servers) {
       if (!s.serverId || !s.embedUrl) continue
-      await supabase.from('EpisodeServer').insert({
+      const { error: sInsErr } = await supabase.from('EpisodeServer').insert({
         episodeId: created.id,
         serverId: s.serverId,
         embedUrl: s.embedUrl,
@@ -80,6 +80,10 @@ export async function POST(req: NextRequest) {
         priority: Number(s.priority) || 0,
         status: s.status ?? 'active',
       })
+      if (sInsErr) {
+        console.error('[admin/episodes POST] EpisodeServer insert:', sInsErr.message)
+        return NextResponse.json({ error: 'Failed to link server: ' + sInsErr.message }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ item: created })

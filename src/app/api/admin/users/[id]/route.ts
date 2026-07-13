@@ -143,11 +143,8 @@ export async function DELETE(
     }
 
     // Fallback: ensure the profile row is gone (in case cascade isn't set up)
-    try {
-      await supabase.from('User').delete().eq('id', id)
-    } catch {
-      // ignore — cascade should already have removed it
-    }
+    const { error: profileDelErr } = await supabase.from('User').delete().eq('id', id)
+    if (profileDelErr) console.warn('[admin/users DELETE] profile cleanup:', profileDelErr.message)
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {

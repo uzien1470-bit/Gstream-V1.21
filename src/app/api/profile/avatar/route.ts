@@ -27,9 +27,23 @@ export async function POST(req: NextRequest) {
     .upload(path, file, { upsert: true, contentType: file.type })
 
   if (uploadError) {
+    console.error('[profile/avatar] upload failed:', uploadError.message)
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-  return NextResponse.json({ url: data.publicUrl, path })
+  const publicUrl = data.publicUrl
+
+  // Persist the new avatar URL to the user's profile row so the UI can
+  // render it without a separate /profile/update call.
+  const { error: updateErr } = await supabase
+    .from('User')
+    .update({ avatarUrl: publicUrl })
+    .eq('id', user.id)
+  if (updateErr) {
+    console.error('[profile/avatar] profile update failed:', updateErr.message)
+    // Non-fatal — the URL is in storage; the client can still use it
+  }
+
+  return NextResponse.json({ url: publicUrl, path })
 }

@@ -25,11 +25,19 @@ export async function getSessionUser(): Promise<AuthUser | null> {
     } = await supabase.auth.getUser()
     if (!user) return null
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileErr } = await supabase
       .from('User')
       .select('id, email, name, role, status, avatarUrl')
       .eq('id', user.id)
       .single()
+    if (profileErr) {
+      // PGRST116 = no rows found (user has auth session but no profile row yet,
+      // e.g. trigger hasn't fired). Treat as logged-out. Log other errors.
+      if (profileErr.code !== 'PGRST116') {
+        console.error('[auth] profile fetch failed:', profileErr.message)
+      }
+      return null
+    }
     if (!profile) return null
     if ((profile as any).status === 'suspended') return null
 

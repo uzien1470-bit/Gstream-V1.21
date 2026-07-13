@@ -13,12 +13,15 @@ export async function PUT(
 
   try {
     const supabase = createAdminSupabaseClient()
-    const row = {
-      seasonNumber: Number(body.seasonNumber),
-      title: body.title,
-      description: body.description ?? null,
-      posterUrl: body.posterUrl ?? null,
-    }
+
+    // Build the update row CONDITIONALLY so a partial update does NOT reset
+    // every omitted field to its default value.
+    const row: any = {}
+    if (body.seasonNumber !== undefined) row.seasonNumber = Number(body.seasonNumber)
+    if (body.title !== undefined) row.title = body.title
+    if (body.description !== undefined) row.description = body.description
+    if (body.posterUrl !== undefined) row.posterUrl = body.posterUrl
+
     const { data: updated, error } = await supabase
       .from('Season')
       .update(row)
@@ -46,9 +49,12 @@ export async function DELETE(
 
   try {
     const supabase = createAdminSupabaseClient()
-    const { error } = await supabase.from('Season').delete().eq('id', id)
+    const { error, count } = await supabase.from('Season').delete({ count: 'exact' }).eq('id', id)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    if (count === 0) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     return NextResponse.json({ ok: true })
   } catch (err: any) {

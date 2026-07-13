@@ -37,14 +37,17 @@ export async function PUT(
 
   try {
     const supabase = createAdminSupabaseClient()
-    const row = {
-      episodeNumber: Number(body.episodeNumber),
-      title: body.title,
-      description: body.description ?? null,
-      thumbnailUrl: body.thumbnailUrl ?? null,
-      runtime: Number(body.runtime) || 0,
-      airDate: body.airDate ?? null,
-    }
+
+    // Build the update row CONDITIONALLY so a partial update does NOT reset
+    // every omitted field to its default value.
+    const row: any = {}
+    if (body.episodeNumber !== undefined) row.episodeNumber = Number(body.episodeNumber)
+    if (body.title !== undefined) row.title = body.title
+    if (body.description !== undefined) row.description = body.description
+    if (body.thumbnailUrl !== undefined) row.thumbnailUrl = body.thumbnailUrl
+    if (body.runtime !== undefined) row.runtime = Number(body.runtime)
+    if (body.airDate !== undefined) row.airDate = body.airDate
+
     const { data: updated, error } = await supabase
       .from('Episode')
       .update(row)
@@ -58,19 +61,28 @@ export async function PUT(
       )
     }
 
-    // Replace servers
-    await supabase.from('EpisodeServer').delete().eq('episodeId', id)
-    const servers: any[] = Array.isArray(body.servers) ? body.servers : []
-    for (const s of servers) {
-      if (!s.serverId || !s.embedUrl) continue
-      await supabase.from('EpisodeServer').insert({
-        episodeId: id,
-        serverId: s.serverId,
-        embedUrl: s.embedUrl,
-        quality: s.quality ?? 'Auto',
-        priority: Number(s.priority) || 0,
-        status: s.status ?? 'active',
-      })
+    // Replace servers (only if provided in the request body)
+    if (Array.isArray(body.servers)) {
+      const { error: sDelErr } = await supabase.from('EpisodeServer').delete().eq('episodeId', id)
+      if (sDelErr) {
+        console.error('[admin/episodes PUT] EpisodeServer delete:', sDelErr.message)
+        return NextResponse.json({ error: 'Failed to clear servers: ' + sDelErr.message }, { status: 500 })
+      }
+      for (const s of body.servers) {
+        if (!s.serverId || !s.embedUrl) continue
+        const { error: sInsErr } = await supabase.from('EpisodeServer').insert({
+          episodeId: id,
+          serverId: s.serverId,
+          embedUrl: s.embedUrl,
+          quality: s.quality ?? 'Auto',
+          priority: Number(s.priority) || 0,
+          status: s.status ?? 'active',
+        })
+        if (sInsErr) {
+          console.error('[admin/episodes PUT] EpisodeServer insert:', sInsErr.message)
+          return NextResponse.json({ error: 'Failed to link server: ' + sInsErr.message }, { status: 500 })
+        }
+      }
     }
     return NextResponse.json({ item: updated })
   } catch (err: any) {
@@ -87,9 +99,12 @@ export async function DELETE(
 
   try {
     const supabase = createAdminSupabaseClient()
-    const { error } = await supabase.from('Episode').delete().eq('id', id)
+    const { error, count } = await supabase.from('Episode').delete({ count: 'exact' }).eq('id', id)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    if (count === 0) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     return NextResponse.json({ ok: true })
   } catch (err: any) {

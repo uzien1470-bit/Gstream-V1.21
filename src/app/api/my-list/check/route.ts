@@ -22,9 +22,14 @@ export async function GET(req: NextRequest) {
         .eq('userId', user.id)
       if (contentType === 'movie') query = query.eq('movieId', contentId)
       else query = query.eq('seriesId', contentId)
-      const { data } = await query.maybeSingle()
+      const { data, error } = await query.maybeSingle()
+      if (error) {
+        console.error('[my-list/check] query failed:', error.message)
+        return NextResponse.json({ inList: false })
+      }
       return NextResponse.json({ inList: Boolean(data) })
-    } catch {
+    } catch (e) {
+      console.error('[my-list/check] crashed:', (e as Error).message)
       return NextResponse.json({ inList: false })
     }
   } catch {

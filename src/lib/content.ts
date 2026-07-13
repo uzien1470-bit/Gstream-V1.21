@@ -282,11 +282,16 @@ export async function getRecommendations(
   try {
     const supabase = await createServerSupabaseClient()
     const table = type === 'movie' ? 'Movie' : 'Series'
-    const { data: item } = await supabase
+    const genreHint = type === 'movie' ? 'genres:Genre!Movie_genres(name)' : 'genres:Genre!Series_genres(name)'
+    const { data: item, error: itemErr } = await supabase
       .from(table)
-      .select('genres:Genre!Movie_genres(name)')
+      .select(genreHint)
       .eq('id', id)
       .single()
+    if (itemErr) {
+      console.error('[content.getRecommendations] genre fetch failed:', itemErr.message)
+      return []
+    }
     const genreNames: string[] = ((item as any)?.genres ?? []).map((g: any) => g.name)
     if (genreNames.length === 0) return []
 

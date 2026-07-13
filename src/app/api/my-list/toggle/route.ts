@@ -32,23 +32,35 @@ export async function POST(req: NextRequest) {
         .eq('userId', user.id)
       if (isMovie) existingQuery = existingQuery.eq('movieId', contentId)
       else existingQuery = existingQuery.eq('seriesId', contentId)
-      const { data: existing } = await existingQuery.maybeSingle()
+      const { data: existing, error: existErr } = await existingQuery.maybeSingle()
+      if (existErr) {
+        console.error('[my-list/toggle] exist check failed:', existErr.message)
+        return NextResponse.json({ error: 'Failed to check list' }, { status: 500 })
+      }
 
       if (existing) {
-        await supabase
+        const { error: delErr } = await supabase
           .from('MyList')
           .delete()
           .eq('id', (existing as { id: string }).id)
+        if (delErr) {
+          console.error('[my-list/toggle] delete failed:', delErr.message)
+          return NextResponse.json({ error: 'Failed to remove' }, { status: 500 })
+        }
         return NextResponse.json({ inList: false })
       }
 
       // Verify content exists in Movie or Series table
       const table = isMovie ? 'Movie' : 'Series'
-      const { data: content } = await supabase
+      const { data: content, error: contentErr } = await supabase
         .from(table)
         .select('id')
         .eq('id', contentId)
         .maybeSingle()
+      if (contentErr) {
+        console.error('[my-list/toggle] content check failed:', contentErr.message)
+        return NextResponse.json({ error: 'Failed to verify content' }, { status: 500 })
+      }
       if (!content) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 })
       }
@@ -62,11 +74,13 @@ export async function POST(req: NextRequest) {
 
       const { error: insertError } = await supabase.from('MyList').insert(row)
       if (insertError) {
+        console.error('[my-list/toggle] insert failed:', insertError.message)
         return NextResponse.json({ error: 'Failed to add' }, { status: 500 })
       }
 
       return NextResponse.json({ inList: true })
-    } catch {
+    } catch (e) {
+      console.error('[my-list/toggle] crashed:', (e as Error).message)
       return NextResponse.json({ error: 'Server error' }, { status: 500 })
     }
   } catch {

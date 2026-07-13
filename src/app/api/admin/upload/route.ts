@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
-const ALLOWED_BUCKETS = ['posters', 'backdrops', 'uploads', 'avatars']
+const ALLOWED_BUCKETS = ['posters', 'backdrops', 'avatars', 'thumbnails']
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData().catch(() => null)
   const file = formData?.get('file')
-  const bucket = String(formData?.get('bucket') ?? 'uploads')
+  const bucket = String(formData?.get('bucket') ?? 'posters')
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 })

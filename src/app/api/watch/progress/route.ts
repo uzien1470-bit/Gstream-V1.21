@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getSessionUser()
     if (!user) {
-      return NextResponse.json({ ok: true }) // silently ignore for guests
+      // Guests: silently ignore — no session to track against
+      return NextResponse.json({ ok: true })
     }
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
@@ -30,63 +31,48 @@ export async function POST(req: NextRequest) {
     try {
       const supabase = await createServerSupabaseClient()
 
-      // Look up an existing WatchProgress row (composite key:
-      // userId + movieId/seriesId + episodeId).
-      let existingQuery = supabase
-        .from('WatchProgress')
-        .select('id')
-        .eq('userId', user.id)
-      if (isMovie) {
-        existingQuery = existingQuery.eq('movieId', contentId)
-      } else {
-        existingQuery = existingQuery.eq('seriesId', contentId)
-      }
-      if (episodeId) {
-        existingQuery = existingQuery.eq('episodeId', episodeId)
-      } else {
-        existingQuery = existingQuery.is('episodeId', null)
-      }
-      const { data: existing } = await existingQuery.maybeSingle()
-
-      const fields: Record<string, unknown> = {
+      // Upsert against the composite unique key
+      // (userId, movieId, seriesId, episodeId). This eliminates the
+      // select-then-insert/update race condition.
+      const row: Record<string, unknown> = {
+        userId: user.id,
+        contentType,
         progress,
         duration: duration ?? 0,
         position: position ?? 0,
+      }
+      if (isMovie) row.movieId = contentId
+      else row.seriesId = contentId
+      if (episodeId) row.episodeId = episodeId
+
+      const { error: upsertErr } = await supabase
+        .from('WatchProgress')
+        .upsert(row, { onConflict: 'userId,movieId,seriesId,episodeId' })
+      if (upsertErr) {
+        console.error('[watch/progress] upsert failed:', upsertErr.message)
+        // Non-fatal for UX — don't break playback, but surface the error server-side
+      }
+
+      // Best-effort WatchHistory insert (append-only; duplicates are fine —
+      // they represent multiple watch sessions). Errors are logged but ignored.
+      const hist: Record<string, unknown> = {
+        userId: user.id,
         contentType,
       }
-
-      if (existing) {
-        await supabase
-          .from('WatchProgress')
-          .update(fields)
-          .eq('id', (existing as { id: string }).id)
-      } else {
-        const insert: Record<string, unknown> = {
-          userId: user.id,
-          ...fields,
+      if (isMovie) hist.movieId = contentId
+      else hist.seriesId = contentId
+      if (episodeId) hist.episodeId = episodeId
+      const { error: histErr } = await supabase.from('WatchHistory').insert(hist)
+      if (histErr) {
+        // PGRST116 / 23505 expected on duplicate — only log unexpected errors
+        if (histErr.code !== '23505') {
+          console.error('[watch/progress] history insert:', histErr.message)
         }
-        if (isMovie) insert.movieId = contentId
-        else insert.seriesId = contentId
-        if (episodeId) insert.episodeId = episodeId
-        await supabase.from('WatchProgress').insert(insert)
-      }
-
-      // Best-effort WatchHistory insert
-      try {
-        const hist: Record<string, unknown> = {
-          userId: user.id,
-          contentType,
-        }
-        if (isMovie) hist.movieId = contentId
-        else hist.seriesId = contentId
-        if (episodeId) hist.episodeId = episodeId
-        await supabase.from('WatchHistory').insert(hist)
-      } catch {
-        // ignore — best-effort
       }
 
       return NextResponse.json({ ok: true })
-    } catch {
+    } catch (e) {
+      console.error('[watch/progress] crashed:', (e as Error).message)
       return NextResponse.json({ ok: true })
     }
   } catch {

@@ -122,19 +122,25 @@ export async function POST(req: NextRequest) {
       }
       // Many-to-many junction rows
       if (genreIds.length > 0) {
-        await supabase
-          .from('Movie_genres')
-          .insert(genreIds.map((gid) => ({ movieId: created.id, genreId: gid })))
+        const gRows = genreIds.map((gid) => ({ movieId: created.id, genreId: gid }))
+        const { error: gInsErr } = await supabase.from('Movie_genres').insert(gRows)
+        if (gInsErr) {
+          console.error('[admin/content POST movie] Movie_genres insert:', gInsErr.message)
+          return NextResponse.json({ error: 'Failed to link genres: ' + gInsErr.message }, { status: 500 })
+        }
       }
       if (categoryIds.length > 0) {
-        await supabase
-          .from('Movie_categories')
-          .insert(categoryIds.map((cid) => ({ movieId: created.id, categoryId: cid })))
+        const cRows = categoryIds.map((cid) => ({ movieId: created.id, categoryId: cid }))
+        const { error: cInsErr } = await supabase.from('Movie_categories').insert(cRows)
+        if (cInsErr) {
+          console.error('[admin/content POST movie] Movie_categories insert:', cInsErr.message)
+          return NextResponse.json({ error: 'Failed to link categories: ' + cInsErr.message }, { status: 500 })
+        }
       }
       // Streaming server rows
       for (const s of servers) {
         if (!s.serverId || !s.embedUrl) continue
-        await supabase.from('MovieServer').insert({
+        const { error: sInsErr } = await supabase.from('MovieServer').insert({
           movieId: created.id,
           serverId: s.serverId,
           embedUrl: s.embedUrl,
@@ -142,6 +148,10 @@ export async function POST(req: NextRequest) {
           priority: Number(s.priority) || 0,
           status: s.status ?? 'active',
         })
+        if (sInsErr) {
+          console.error('[admin/content POST movie] MovieServer insert:', sInsErr.message)
+          return NextResponse.json({ error: 'Failed to link server: ' + sInsErr.message }, { status: 500 })
+        }
       }
       return NextResponse.json({ item: created })
     } else {
@@ -159,14 +169,20 @@ export async function POST(req: NextRequest) {
       }
       // Junction rows
       if (genreIds.length > 0) {
-        await supabase
-          .from('Series_genres')
-          .insert(genreIds.map((gid) => ({ seriesId: created.id, genreId: gid })))
+        const gRows = genreIds.map((gid) => ({ seriesId: created.id, genreId: gid }))
+        const { error: gInsErr } = await supabase.from('Series_genres').insert(gRows)
+        if (gInsErr) {
+          console.error('[admin/content POST series] Series_genres insert:', gInsErr.message)
+          return NextResponse.json({ error: 'Failed to link genres: ' + gInsErr.message }, { status: 500 })
+        }
       }
       if (categoryIds.length > 0) {
-        await supabase
-          .from('Series_categories')
-          .insert(categoryIds.map((cid) => ({ seriesId: created.id, categoryId: cid })))
+        const cRows = categoryIds.map((cid) => ({ seriesId: created.id, categoryId: cid }))
+        const { error: cInsErr } = await supabase.from('Series_categories').insert(cRows)
+        if (cInsErr) {
+          console.error('[admin/content POST series] Series_categories insert:', cInsErr.message)
+          return NextResponse.json({ error: 'Failed to link categories: ' + cInsErr.message }, { status: 500 })
+        }
       }
       return NextResponse.json({ item: created })
     }

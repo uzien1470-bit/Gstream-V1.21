@@ -890,14 +890,16 @@ async function logInsert(
   table: string,
   row: Record<string, any>,
   select = 'id',
+  onConflict?: string,
 ): Promise<any | null> {
-  const res: InsertResult = await supabase
-    .from(table)
-    .insert(row)
-    .select(select)
-    .single()
+  // When onConflict is provided, use upsert (idempotent — safe to re-run).
+  // Otherwise plain insert.
+  const query = onConflict
+    ? supabase.from(table).upsert(row, { onConflict, ignoreDuplicates: false })
+    : supabase.from(table).insert(row)
+  const res: InsertResult = await query.select(select).single()
   if (res.error) {
-    console.error(`✗ ${label} insert failed [${table}]`)
+    console.error(`✗ ${label} ${onConflict ? 'upsert' : 'insert'} failed [${table}]`)
     console.error(`  code:    ${res.error.code ?? '(none)'}`)
     console.error(`  message: ${res.error.message}`)
     if (res.error.details) console.error(`  details: ${res.error.details}`)
@@ -906,7 +908,7 @@ async function logInsert(
     return null
   }
   if (!res.data) {
-    console.error(`✗ ${label} insert returned no data [${table}]`)
+    console.error(`✗ ${label} ${onConflict ? 'upsert' : 'insert'} returned no data [${table}]`)
     return null
   }
   return res.data
@@ -964,7 +966,7 @@ async function main() {
   const genreMap = new Map<string, string>()
   let genreOk = 0
   for (const name of GENRES) {
-    const row = await logInsert(supabase, 'Genre', 'Genre', { name, slug: slugify(name) })
+    const row = await logInsert(supabase, 'Genre', 'Genre', { name, slug: slugify(name) }, 'id', 'slug')
     if (row) { genreMap.set(name, row.id); genreOk++ }
   }
   console.log(`  ✓ ${genreOk}/${GENRES.length} genres inserted`)
@@ -973,7 +975,7 @@ async function main() {
   const catMap = new Map<string, string>()
   let catOk = 0
   for (const c of CATEGORIES) {
-    const row = await logInsert(supabase, 'Category', 'Category', { name: c.name, slug: c.slug, icon: c.icon })
+    const row = await logInsert(supabase, 'Category', 'Category', { name: c.name, slug: c.slug, icon: c.icon }, 'id', 'slug')
     if (row) { catMap.set(c.slug, row.id); catOk++ }
   }
   console.log(`  ✓ ${catOk}/${CATEGORIES.length} categories inserted`)
@@ -984,42 +986,43 @@ async function main() {
   for (const s of SERVERS) {
     const row = await logInsert(supabase, 'StreamingServer', 'StreamingServer', {
       name: s.name, slug: s.slug, priority: s.priority, status: s.status,
-    })
+    }, 'id', 'slug')
     if (row) { serverMap.set(s.name, row.id); srvOk++ }
   }
   console.log(`  ✓ ${srvOk}/${SERVERS.length} servers inserted`)
 
-  console.log('─ Creating auth users...')
+  console.log('─ Creating / reusing auth users...')
   let adminUserId: string | null = null
   let demoUserId: string | null = null
-  try {
-    const { data: a, error: aErr } = await supabase.auth.admin.createUser({
-      email: 'admin@gstream.com',
-      password: 'admin123',
-      email_confirm: true,
-      user_metadata: { name: 'Administrator' },
+
+  // Idempotent: if the user already exists (from a previous run), reuse it
+  // instead of failing. We try createUser first; on "already registered"
+  // we fall back to listUsersByEmail to fetch the existing ID.
+  async function createOrReuseUser(email: string, password: string, name: string): Promise<string | null> {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email, password, email_confirm: true, user_metadata: { name },
     })
-    if (aErr) {
-      console.warn(`  ⚠ admin user create: ${aErr.message}`)
-    } else {
-      adminUserId = a.user?.id ?? null
-      console.log(`  ✓ admin created: ${adminUserId}`)
+    if (!error && data.user) {
+      console.log(`  ✓ created ${email}: ${data.user.id}`)
+      return data.user.id
     }
-  } catch (e) { console.warn(`  ⚠ admin create skipped: ${(e as Error).message}`) }
-  try {
-    const { data: u, error: uErr } = await supabase.auth.admin.createUser({
-      email: 'user@gstream.com',
-      password: 'user123',
-      email_confirm: true,
-      user_metadata: { name: 'Demo Viewer' },
-    })
-    if (uErr) {
-      console.warn(`  ⚠ demo user create: ${uErr.message}`)
-    } else {
-      demoUserId = u.user?.id ?? null
-      console.log(`  ✓ demo user created: ${demoUserId}`)
+    // User already exists — look them up by email
+    const { data: list, error: listErr } = await supabase.auth.admin.listUsers()
+    if (listErr) {
+      console.error(`  ✗ failed to list users for ${email}:`, listErr.message)
+      return null
     }
-  } catch (e) { console.warn(`  ⚠ user create skipped: ${(e as Error).message}`) }
+    const existing = (list.users ?? []).find((u: any) => u.email === email)
+    if (existing) {
+      console.log(`  ↻ reused ${email}: ${existing.id}`)
+      return existing.id
+    }
+    console.error(`  ✗ could not create or find ${email}:`, error?.message ?? 'unknown')
+    return null
+  }
+
+  adminUserId = await createOrReuseUser('admin@gstream.com', 'admin123', 'Administrator')
+  demoUserId = await createOrReuseUser('user@gstream.com', 'user123', 'Demo Viewer')
 
   if (adminUserId) {
     const { error: promoErr } = await supabase
@@ -1029,7 +1032,7 @@ async function main() {
     if (promoErr) console.warn(`  ⚠ admin role promotion: ${promoErr.message}`)
     else console.log(`  ✓ admin role promoted`)
   }
-  console.log('Created admin:', adminUserId ? 'admin@gstream.com' : '(skipped)', '| demo user:', demoUserId ? 'user@gstream.com' : '(skipped)')
+  console.log('Admin:', adminUserId ? 'admin@gstream.com' : '(skipped)', '| Demo user:', demoUserId ? 'user@gstream.com' : '(skipped)')
 
   console.log('─ Inserting movies...')
   let movieOk = 0
@@ -1043,7 +1046,7 @@ async function main() {
       popular: m.flags?.popular ?? false, topRated: m.flags?.topRated ?? false,
       recentlyAdded: m.flags?.recentlyAdded ?? true, recentlyUpdated: true,
       status: 'published', cast: JSON.stringify(m.cast),
-    })
+    }, 'id', 'slug')
     if (!created) continue
     movieOk++
 
@@ -1083,7 +1086,7 @@ async function main() {
       recentlyAdded: s.flags?.recentlyAdded ?? true, recentlyUpdated: true,
       status: 'published', cast: JSON.stringify(s.cast),
     }
-    let created = await logInsert(supabase, isAnime ? 'Anime' : 'Series', 'Series', payload)
+    let created = await logInsert(supabase, isAnime ? 'Anime' : 'Series', 'Series', payload, 'id', 'slug')
 
     // ── Auto-recovery: retry with minimal payload on schema mismatch
     if (!created) {
@@ -1099,7 +1102,7 @@ async function main() {
         status: 'published',
         cast: JSON.stringify(s.cast || []),
       }
-      created = await logInsert(supabase, `${isAnime ? 'Anime' : 'Series'} (retry)`, 'Series', minimal)
+      created = await logInsert(supabase, `${isAnime ? 'Anime' : 'Series'} (retry)`, 'Series', minimal, 'id', 'slug')
     }
     if (!created) {
       console.error(`  ✗ Skipping "${s.title}" — insert failed after retry`)
@@ -1175,11 +1178,23 @@ async function main() {
   }
   console.log(`✓ ${order} featured banners inserted`)
 
-  console.log('─ Seed complete! ─')
-  console.log('──────────────────────────────────────')
-  console.log('Admin login:    admin@gstream.com / admin123')
-  console.log('User login:     user@gstream.com / user123')
-  console.log('──────────────────────────────────────')
+  // ── Final summary ──
+  console.log('')
+  console.log('═══════════════════════════════════════════')
+  console.log('  SEED SUMMARY')
+  console.log('═══════════════════════════════════════════')
+  console.log(`  ✓ Genres:            ${genreOk}/${GENRES.length}`)
+  console.log(`  ✓ Categories:        ${catOk}/${CATEGORIES.length}`)
+  console.log(`  ✓ Streaming Servers: ${srvOk}/${SERVERS.length}`)
+  console.log(`  ✓ Movies:            ${movieOk}/${MOVIES.length}`)
+  console.log(`  ✓ Series + Anime:    ${seriesOk}/${SERIES.length + ANIME.length}  (${SERIES.length} series, ${ANIME.length} anime)`)
+  console.log(`  ✓ Featured Banners:  ${order}`)
+  console.log(`  ✓ Admin user:        ${adminUserId ? 'admin@gstream.com' : '(skipped)'}`)
+  console.log(`  ✓ Demo user:         ${demoUserId ? 'user@gstream.com' : '(skipped)'}`)
+  console.log('═══════════════════════════════════════════')
+  console.log('  Admin login:  admin@gstream.com / admin123')
+  console.log('  User login:   user@gstream.com / user123')
+  console.log('═══════════════════════════════════════════')
 }
 
 main().catch((e) => {
