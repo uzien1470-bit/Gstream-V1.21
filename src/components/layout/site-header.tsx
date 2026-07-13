@@ -33,7 +33,14 @@ export function SiteHeader() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const { user, signOut } = useSession()
+
+  // Flip `mounted` on the first client render (render-time state update,
+  // avoids both the setState-in-effect lint rule and SSR/client mismatch).
+  if (!mounted) {
+    queueMicrotask(() => setMounted(true))
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)
@@ -219,16 +226,17 @@ export function SiteHeader() {
           </div>
         )}
 
-        {/* Mobile menu */}
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <button
-              className="grid h-9 w-9 place-items-center rounded-md text-foreground lg:hidden"
-              aria-label="Menu"
-            >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-          </SheetTrigger>
+        {/* Mobile menu — rendered client-only to avoid Radix useId hydration mismatch */}
+        {mounted ? (
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <button
+                className="grid h-9 w-9 place-items-center rounded-md text-foreground lg:hidden"
+                aria-label="Menu"
+              >
+                {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </SheetTrigger>
           <SheetContent side="left" className="w-72 glass-strong p-0">
             <SheetHeader className="px-6 pt-6">
               <SheetTitle className="text-left" style={{ fontFamily: 'var(--font-display)' }}>
@@ -293,6 +301,9 @@ export function SiteHeader() {
             </div>
           </SheetContent>
         </Sheet>
+        ) : (
+          <div className="h-9 w-9 lg:hidden" aria-hidden="true" />
+        )}
       </div>
     </header>
   )

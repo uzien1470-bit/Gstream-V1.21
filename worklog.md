@@ -158,3 +158,21 @@ Stage Summary:
 - All components (buttons, cards, forms, nav, modals, admin dashboard) follow automatically via semantic CSS tokens
 - Contrast, accessibility, and responsive behavior preserved
 - Zero functional changes — only CSS variables + 3 gradient color references updated
+
+---
+Task ID: 14
+Agent: main
+Task: Fix Radix Sheet hydration mismatch (aria-controls ID mismatch on mobile menu)
+
+Work Log:
+- Diagnosed: Radix <Sheet> in SiteHeader always rendered in SSR tree; its internal useId() generated aria-controls IDs (radix-_R_xxx) that diverged between server and client → hydration mismatch error
+- Root cause: Radix components use React useId() for aria-controls/aria-labelledby; when present in SSR HTML, IDs can mismatch on client hydration
+- Fix: gated the Sheet (mobile menu) behind a `mounted` flag so it only renders on the client; rendered a static placeholder <div> (same dimensions, lg:hidden) during SSR to preserve layout
+- Used queueMicrotask(() => setMounted(true)) in render body (not in useEffect) to avoid the react-hooks/set-state-in-effect lint error while still deferring the state flip until after hydration completes
+- DropdownMenu (user menu) not affected — it only renders when `user` is non-null, and user starts null on both server and client (cachedUser stays null during SSR), so it's never in the SSR tree
+- Verified via Agent Browser: 0 hydration errors, 0 console errors, 0 page errors; mobile menu button renders at 800px viewport and opens correctly showing all nav items + auth buttons
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- Hydration mismatch resolved — the mobile Sheet menu now mounts client-only, eliminating the Radix useId server/client divergence
+- No functional changes — mobile menu works identically, just renders one frame later (imperceptible)
