@@ -348,3 +348,27 @@ Stage Summary:
 - No TEXT↔UUID mismatches remain anywhere: User.id is uuid, all userId FKs are uuid, auth.uid() compared directly, handle_new_user inserts bare new.id
 - prisma/seed.ts uses a valid zero-UUID sentinel safe for both uuid and text columns
 - Backend-only change: only supabase/schema.sql and prisma/seed.ts modified
+
+---
+Task ID: 19
+Agent: main
+Task: Debug prisma/seed.ts — Series inserts failing silently (backend-only)
+
+Work Log:
+- Root cause: every Supabase insert used `const { data } = await ...` and only checked `if (!data) continue` — the `error` field was never inspected, so failures were completely silent
+- Added `logInsert(label, table, row, select)` helper that: (a) checks both `data` AND `error`, (b) prints the exact Supabase error code, message, details, hint, and a truncated payload on failure, (c) returns null on failure
+- Added `logInsertMany(label, table, rows)` helper for batch junction-table inserts with the same error reporting
+- Replaced ALL 16 insert call sites (Genre, Category, StreamingServer, Movie, Series, Season, Episode, MovieServer, EpisodeServer, Movie_genres, Movie_categories, Series_genres, Series_categories, FeaturedBanner) to use the logging helpers
+- Added detailed progress logging for every entity type: "─ Inserting genres...", "✓ N/M genres inserted", per-row ✓/✗ markers
+- Added Series auto-recovery: if the full-payload insert fails, retries with a minimal payload (only NOT-NULL columns: title, slug, synopsis, posterUrl, backdropUrl, releaseYear, type, status, cast) to handle schema drift without skipping
+- Added env-var check at the TOP of main() BEFORE createAdminSupabaseClient() — prints "✗ Supabase env vars missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local" and exits cleanly instead of crashing with a cryptic stack trace
+- Refactored logInsert/logInsertMany to accept the supabase client as a parameter (avoids per-call client creation, ensures the env check runs first)
+- Added error checking on the delete-clean-slate loop and featured-content fetches (warns on error instead of silent failure)
+- NO frontend changes — only prisma/seed.ts modified
+- Verified: lint 0 errors; `bun run prisma/seed.ts` without creds prints clear error message; all 5 key routes return 200; no dev-server errors
+
+Stage Summary:
+- `bun run db:seed` now clearly reports the exact Supabase error (code, message, details, hint, payload) for ANY failed insert
+- Series inserts that fail due to schema mismatch auto-retry with a minimal payload before skipping
+- 54 console statements provide full visibility into seed progress (per-entity counts + per-row success/failure)
+- Running without Supabase credentials prints an actionable error instead of crashing

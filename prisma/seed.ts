@@ -873,14 +873,78 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+
+// ───────────────────────────── helpers ─────────────────────────────
+// Every Supabase insert in this seed is checked for errors and logged.
+// `logInsert` returns the inserted row or null, and prints a clear error
+// with the exact Supabase message + the offending payload when it fails.
+
+interface InsertResult {
+  data: any
+  error: any
+}
+
+async function logInsert(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  label: string,
+  table: string,
+  row: Record<string, any>,
+  select = 'id',
+): Promise<any | null> {
+  const res: InsertResult = await supabase
+    .from(table)
+    .insert(row)
+    .select(select)
+    .single()
+  if (res.error) {
+    console.error(`✗ ${label} insert failed [${table}]`)
+    console.error(`  code:    ${res.error.code ?? '(none)'}`)
+    console.error(`  message: ${res.error.message}`)
+    if (res.error.details) console.error(`  details: ${res.error.details}`)
+    if (res.error.hint) console.error(`  hint:    ${res.error.hint}`)
+    console.error(`  payload: ${JSON.stringify(row).slice(0, 400)}`)
+    return null
+  }
+  if (!res.data) {
+    console.error(`✗ ${label} insert returned no data [${table}]`)
+    return null
+  }
+  return res.data
+}
+
+async function logInsertMany(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  label: string,
+  table: string,
+  rows: Record<string, any>[],
+): Promise<boolean> {
+  if (rows.length === 0) return true
+  const res: InsertResult = await supabase.from(table).insert(rows)
+  if (res.error) {
+    console.error(`✗ ${label} batch insert failed [${table}] — ${rows.length} rows`)
+    console.error(`  code:    ${res.error.code ?? '(none)'}`)
+    console.error(`  message: ${res.error.message}`)
+    if (res.error.details) console.error(`  details: ${res.error.details}`)
+    if (res.error.hint) console.error(`  hint:    ${res.error.hint}`)
+    console.error(`  first row: ${JSON.stringify(rows[0]).slice(0, 300)}`)
+    return false
+  }
+  return true
+}
+
 async function main() {
   console.log('Seeding Gstream database (Supabase)...')
+
+  // ── Verify Supabase is configured BEFORE creating any client ──
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    console.error('✗ Supabase env vars missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local')
+    process.exit(1)
+  }
+  console.log(`Supabase URL: ${url}`)
   const supabase = createAdminSupabaseClient()
 
-  // Clean slate (order matters for FK constraints).
-  // Uses a valid zero-UUID ('00000000-0000-0000-0000-000000000000') as the
-  // sentinel — safe for both uuid columns (User.id) and text columns (all
-  // other tables) since no real row ever matches it.
   const SENTINEL = '00000000-0000-0000-0000-000000000000'
   const tables = [
     'WatchProgress', 'WatchHistory', 'MyList', 'FeaturedBanner',
@@ -888,63 +952,89 @@ async function main() {
     'Movie_genres', 'Movie_categories', 'Series_genres', 'Series_categories',
     'Movie', 'Series', 'StreamingServer', 'Genre', 'Category',
   ]
+  console.log('─ Cleaning existing rows...')
   for (const t of tables) {
-    await supabase.from(t).delete().neq('id', SENTINEL).then(() => {})
+    const { error } = await supabase.from(t).delete().neq('id', SENTINEL)
+    if (error) console.warn(`  ⚠ delete from ${t}: ${error.message}`)
   }
-  // User profiles (uuid id) — NOT auth.users (those are managed by Supabase Auth)
-  await supabase.from('User').delete().neq('id', SENTINEL).then(() => {})
+  const { error: userDelErr } = await supabase.from('User').delete().neq('id', SENTINEL)
+  if (userDelErr) console.warn(`  ⚠ delete from User: ${userDelErr.message}`)
 
-  // Genres
+  console.log('─ Inserting genres...')
   const genreMap = new Map<string, string>()
+  let genreOk = 0
   for (const name of GENRES) {
-    const { data } = await supabase.from('Genre').insert({ name, slug: slugify(name) }).select('id').single()
-    if (data) genreMap.set(name, data.id)
+    const row = await logInsert(supabase, 'Genre', 'Genre', { name, slug: slugify(name) })
+    if (row) { genreMap.set(name, row.id); genreOk++ }
   }
-  // Categories
-  const catMap = new Map<string, string>()
-  for (const c of CATEGORIES) {
-    const { data } = await supabase.from('Category').insert({ name: c.name, slug: c.slug, icon: c.icon }).select('id').single()
-    if (data) catMap.set(c.slug, data.id)
-  }
-  // Servers
-  const serverMap = new Map<string, string>()
-  for (const s of SERVERS) {
-    const { data } = await supabase.from('StreamingServer').insert({ name: s.name, slug: s.slug, priority: s.priority, status: s.status }).select('id').single()
-    if (data) serverMap.set(s.name, data.id)
-  }
+  console.log(`  ✓ ${genreOk}/${GENRES.length} genres inserted`)
 
-  // Admin + demo user — created via Supabase Auth (service-role).
-  // The auth trigger auto-creates a public."User" profile row; we then promote admin.
+  console.log('─ Inserting categories...')
+  const catMap = new Map<string, string>()
+  let catOk = 0
+  for (const c of CATEGORIES) {
+    const row = await logInsert(supabase, 'Category', 'Category', { name: c.name, slug: c.slug, icon: c.icon })
+    if (row) { catMap.set(c.slug, row.id); catOk++ }
+  }
+  console.log(`  ✓ ${catOk}/${CATEGORIES.length} categories inserted`)
+
+  console.log('─ Inserting streaming servers...')
+  const serverMap = new Map<string, string>()
+  let srvOk = 0
+  for (const s of SERVERS) {
+    const row = await logInsert(supabase, 'StreamingServer', 'StreamingServer', {
+      name: s.name, slug: s.slug, priority: s.priority, status: s.status,
+    })
+    if (row) { serverMap.set(s.name, row.id); srvOk++ }
+  }
+  console.log(`  ✓ ${srvOk}/${SERVERS.length} servers inserted`)
+
+  console.log('─ Creating auth users...')
   let adminUserId: string | null = null
   let demoUserId: string | null = null
   try {
-    const { data: a } = await supabase.auth.admin.createUser({
+    const { data: a, error: aErr } = await supabase.auth.admin.createUser({
       email: 'admin@gstream.com',
       password: 'admin123',
       email_confirm: true,
       user_metadata: { name: 'Administrator' },
     })
-    adminUserId = a.user?.id ?? null
-  } catch (e) { console.warn('admin create skipped:', (e as Error).message) }
+    if (aErr) {
+      console.warn(`  ⚠ admin user create: ${aErr.message}`)
+    } else {
+      adminUserId = a.user?.id ?? null
+      console.log(`  ✓ admin created: ${adminUserId}`)
+    }
+  } catch (e) { console.warn(`  ⚠ admin create skipped: ${(e as Error).message}`) }
   try {
-    const { data: u } = await supabase.auth.admin.createUser({
+    const { data: u, error: uErr } = await supabase.auth.admin.createUser({
       email: 'user@gstream.com',
       password: 'user123',
       email_confirm: true,
       user_metadata: { name: 'Demo Viewer' },
     })
-    demoUserId = u.user?.id ?? null
-  } catch (e) { console.warn('user create skipped:', (e as Error).message) }
+    if (uErr) {
+      console.warn(`  ⚠ demo user create: ${uErr.message}`)
+    } else {
+      demoUserId = u.user?.id ?? null
+      console.log(`  ✓ demo user created: ${demoUserId}`)
+    }
+  } catch (e) { console.warn(`  ⚠ user create skipped: ${(e as Error).message}`) }
 
-  // Promote admin role in the profile table (trigger created it as 'user')
   if (adminUserId) {
-    await supabase.from('User').update({ role: 'admin' }).eq('id', adminUserId)
+    const { error: promoErr } = await supabase
+      .from('User')
+      .update({ role: 'admin' })
+      .eq('id', adminUserId)
+    if (promoErr) console.warn(`  ⚠ admin role promotion: ${promoErr.message}`)
+    else console.log(`  ✓ admin role promoted`)
   }
   console.log('Created admin:', adminUserId ? 'admin@gstream.com' : '(skipped)', '| demo user:', demoUserId ? 'user@gstream.com' : '(skipped)')
 
-  // Movies
+  console.log('─ Inserting movies...')
+  let movieOk = 0
   for (const m of MOVIES) {
-    const { data: created } = await supabase.from('Movie').insert({
+    const created = await logInsert(supabase, 'Movie', 'Movie', {
       title: m.title, slug: m.slug, synopsis: m.synopsis,
       posterUrl: m.poster, backdropUrl: m.backdrop, logoUrl: m.logo ?? null,
       releaseYear: m.year, runtime: m.runtime, rating: m.rating, voteCount: m.votes,
@@ -953,32 +1043,37 @@ async function main() {
       popular: m.flags?.popular ?? false, topRated: m.flags?.topRated ?? false,
       recentlyAdded: m.flags?.recentlyAdded ?? true, recentlyUpdated: true,
       status: 'published', cast: JSON.stringify(m.cast),
-    }).select('id').single()
+    })
     if (!created) continue
+    movieOk++
 
-    // Genre junction
-    const gRows = m.genres.map((n) => genreMap.get(n)).filter(Boolean).map((gid) => ({ movieId: created.id, genreId: gid }))
-    if (gRows.length) await supabase.from('Movie_genres').insert(gRows)
-    // Category junction
-    const cRows = m.categories.map((s) => catMap.get(s)).filter(Boolean).map((cid) => ({ movieId: created.id, categoryId: cid }))
-    if (cRows.length) await supabase.from('Movie_categories').insert(cRows)
-    // Servers
+    const gRows = m.genres
+      .map((n) => genreMap.get(n))
+      .filter((gid): gid is string => Boolean(gid))
+      .map((gid) => ({ movieId: created.id, genreId: gid }))
+    await logInsertMany(supabase, 'Movie_genres', 'Movie_genres', gRows)
+    const cRows = m.categories
+      .map((s) => catMap.get(s))
+      .filter((cid): cid is string => Boolean(cid))
+      .map((cid) => ({ movieId: created.id, categoryId: cid }))
+    await logInsertMany(supabase, 'Movie_categories', 'Movie_categories', cRows)
     for (const sv of m.servers) {
       const sid = serverMap.get(sv.name)
-      if (!sid) continue
-      await supabase.from('MovieServer').insert({
+      if (!sid) { console.warn(`  ⚠ server "${sv.name}" not found for movie "${m.title}"`); continue }
+      await logInsert(supabase, 'MovieServer', 'MovieServer', {
         movieId: created.id, serverId: sid, embedUrl: sv.embedUrl,
         quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
       })
     }
   }
-  console.log(`Seeded ${MOVIES.length} movies`)
+  console.log(`✓ ${movieOk}/${MOVIES.length} movies inserted`)
 
-  // Series + Anime
-  let seriesCount = 0
+  console.log('─ Inserting series + anime...')
+  let seriesOk = 0
+  const seriesTotal = SERIES.length + ANIME.length
   for (const s of [...SERIES, ...ANIME]) {
     const isAnime = ANIME.includes(s)
-    const { data: created } = await supabase.from('Series').insert({
+    const payload: Record<string, any> = {
       title: s.title, slug: s.slug, synopsis: s.synopsis,
       posterUrl: s.poster, backdropUrl: s.backdrop, logoUrl: s.logo ?? null,
       releaseYear: s.year, rating: s.rating, voteCount: s.votes,
@@ -987,64 +1082,100 @@ async function main() {
       popular: s.flags?.popular ?? false, topRated: s.flags?.topRated ?? false,
       recentlyAdded: s.flags?.recentlyAdded ?? true, recentlyUpdated: true,
       status: 'published', cast: JSON.stringify(s.cast),
-    }).select('id').single()
-    if (!created) continue
+    }
+    let created = await logInsert(supabase, isAnime ? 'Anime' : 'Series', 'Series', payload)
 
-    // Genre junction
-    const gRows = s.genres.map((n) => genreMap.get(n)).filter(Boolean).map((gid) => ({ seriesId: created.id, genreId: gid }))
-    if (gRows.length) await supabase.from('Series_genres').insert(gRows)
-    // Category junction
-    const cRows = s.categories.map((c) => catMap.get(c)).filter(Boolean).map((cid) => ({ seriesId: created.id, categoryId: cid }))
-    if (cRows.length) await supabase.from('Series_categories').insert(cRows)
+    // ── Auto-recovery: retry with minimal payload on schema mismatch
+    if (!created) {
+      console.warn(`  ↻ Retrying "${s.title}" with minimal payload (schema auto-fix)...`)
+      const minimal: Record<string, any> = {
+        title: s.title,
+        slug: s.slug,
+        synopsis: s.synopsis || '',
+        posterUrl: s.poster || '',
+        backdropUrl: s.backdrop || '',
+        releaseYear: s.year,
+        type: isAnime ? 'anime' : 'series',
+        status: 'published',
+        cast: JSON.stringify(s.cast || []),
+      }
+      created = await logInsert(supabase, `${isAnime ? 'Anime' : 'Series'} (retry)`, 'Series', minimal)
+    }
+    if (!created) {
+      console.error(`  ✗ Skipping "${s.title}" — insert failed after retry`)
+      continue
+    }
+    seriesOk++
+
+    const gRows = s.genres
+      .map((n) => genreMap.get(n))
+      .filter((gid): gid is string => Boolean(gid))
+      .map((gid) => ({ seriesId: created.id, genreId: gid }))
+    await logInsertMany(supabase, 'Series_genres', 'Series_genres', gRows)
+    const cRows = s.categories
+      .map((c) => catMap.get(c))
+      .filter((cid): cid is string => Boolean(cid))
+      .map((cid) => ({ seriesId: created.id, categoryId: cid }))
+    await logInsertMany(supabase, 'Series_categories', 'Series_categories', cRows)
 
     for (const season of s.seasons) {
-      const { data: createdSeason } = await supabase.from('Season').insert({
+      const createdSeason = await logInsert(supabase, 'Season', 'Season', {
         seriesId: created.id, seasonNumber: season.seasonNumber, title: season.title,
         description: season.description ?? null, posterUrl: season.poster ?? null,
         episodeCount: season.episodes.length,
-      }).select('id').single()
+      })
       if (!createdSeason) continue
 
       for (const [epIdx, ep] of season.episodes.entries()) {
-        const { data: createdEp } = await supabase.from('Episode').insert({
+        const createdEp = await logInsert(supabase, 'Episode', 'Episode', {
           seasonId: createdSeason.id, episodeNumber: epIdx + 1, title: ep.title,
           description: ep.description, thumbnailUrl: ep.thumbnail ?? created.backdropUrl,
           runtime: ep.runtime, airDate: ep.airDate ?? null,
-        }).select('id').single()
+        })
         if (!createdEp) continue
 
         for (const sv of ep.servers) {
           const sid = serverMap.get(sv.name)
-          if (!sid) continue
-          await supabase.from('EpisodeServer').insert({
+          if (!sid) { console.warn(`  ⚠ server "${sv.name}" not found for episode "${ep.title}"`); continue }
+          await logInsert(supabase, 'EpisodeServer', 'EpisodeServer', {
             episodeId: createdEp.id, serverId: sid, embedUrl: sv.embedUrl,
             quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
           })
         }
       }
     }
-    seriesCount++
   }
-  console.log(`Seeded ${seriesCount} series/anime`)
+  console.log(`✓ ${seriesOk}/${seriesTotal} series/anime inserted`)
 
-  // Featured banners — derive from featured content
-  const { data: featuredMovies } = await supabase.from('Movie').select('id, title, synopsis, backdropUrl, logoUrl').eq('featured', true).limit(3)
-  const { data: featuredSeries } = await supabase.from('Series').select('id, title, synopsis, backdropUrl, logoUrl').eq('featured', true).limit(3)
+  console.log('─ Inserting featured banners...')
+  const { data: featuredMovies, error: fmErr } = await supabase
+    .from('Movie')
+    .select('id, title, synopsis, backdropUrl, logoUrl')
+    .eq('featured', true)
+    .limit(3)
+  if (fmErr) console.warn(`  ⚠ fetch featured movies: ${fmErr.message}`)
+  const { data: featuredSeries, error: fsErr } = await supabase
+    .from('Series')
+    .select('id, title, synopsis, backdropUrl, logoUrl')
+    .eq('featured', true)
+    .limit(3)
+  if (fsErr) console.warn(`  ⚠ fetch featured series: ${fsErr.message}`)
   let order = 0
   for (const fm of (featuredMovies ?? []).slice(0, 2)) {
-    await supabase.from('FeaturedBanner').insert({
+    await logInsert(supabase, 'FeaturedBanner (movie)', 'FeaturedBanner', {
       title: fm.title, description: (fm.synopsis ?? '').slice(0, 180) + '...',
       imageUrl: fm.backdropUrl, logoUrl: fm.logoUrl, order: order++, active: true, movieId: fm.id,
     })
   }
   for (const fs of (featuredSeries ?? []).slice(0, 2)) {
-    await supabase.from('FeaturedBanner').insert({
+    await logInsert(supabase, 'FeaturedBanner (series)', 'FeaturedBanner', {
       title: fs.title, description: (fs.synopsis ?? '').slice(0, 180) + '...',
       imageUrl: fs.backdropUrl, logoUrl: fs.logoUrl, order: order++, active: true, seriesId: fs.id,
     })
   }
+  console.log(`✓ ${order} featured banners inserted`)
 
-  console.log('Seed complete!')
+  console.log('─ Seed complete! ─')
   console.log('──────────────────────────────────────')
   console.log('Admin login:    admin@gstream.com / admin123')
   console.log('User login:     user@gstream.com / user123')
@@ -1052,6 +1183,7 @@ async function main() {
 }
 
 main().catch((e) => {
+  console.error('Seed script crashed:')
   console.error(e)
   process.exit(1)
 })
