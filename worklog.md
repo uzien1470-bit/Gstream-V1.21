@@ -323,3 +323,28 @@ Work Log:
 
 Stage Summary:
 - React state-update error resolved; mobile menu works identically, just mounts one render later (imperceptible)
+
+---
+Task ID: 18
+Agent: main
+Task: Fix UUID/TEXT mismatches in Supabase schema (backend-only maintenance)
+
+Work Log:
+- Changed public."User".id from text → uuid (matches auth.users.id exactly)
+- Changed all userId FK columns to uuid: MyList.userId, WatchHistory.userId, WatchProgress.userId
+- Removed every auth.uid()::text cast → bare auth.uid() (13 occurrences across storage policies + RLS policies)
+- Removed u.id = auth.uid()::text → u.id = auth.uid() (storage admin-write policies)
+- Removed auth.uid()::text = id → auth.uid() = id (users_self_read, users_self_update, mylist/history/progress owner policies)
+- Removed auth.uid()::text = "userId" → auth.uid() = "userId" (6 owner-RLS policies)
+- Fixed handle_new_user(): new.id::text → new.id (UUID inserts into UUID directly)
+- Made schema fully idempotent: added DROP POLICY IF EXISTS before every CREATE POLICY (34 drops), DROP TRIGGER IF EXISTS (5 drops), CREATE OR REPLACE FUNCTION (2), CREATE TABLE IF NOT EXISTS (18), ON CONFLICT DO NOTHING for storage bucket inserts (2)
+- Fixed prisma/seed.ts delete sentinel: '00000000' → '00000000-0000-0000-0000-000000000000' (valid zero-UUID, works for both uuid and text columns — the old sentinel would fail PostgREST uuid cast on the User table)
+- NO frontend changes: UI, pages, components, styling, routing, player, admin interface all untouched
+- NO API behavior changes: TypeScript code already treats user IDs as strings (Supabase serializes UUIDs as strings over JSON), so no JS/TS changes needed
+- Verified: 0 ::text casts remain in schema; all userId columns uuid; handle_new_user uses bare new.id; 34 DROP POLICY IF EXISTS + 5 DROP TRIGGER IF EXISTS for idempotency; lint 0 errors; all 6 key routes return 200; no dev-server errors
+
+Stage Summary:
+- supabase/schema.sql now executes cleanly top-to-bottom on a fresh Supabase project AND is safe to re-run (idempotent)
+- No TEXT↔UUID mismatches remain anywhere: User.id is uuid, all userId FKs are uuid, auth.uid() compared directly, handle_new_user inserts bare new.id
+- prisma/seed.ts uses a valid zero-UUID sentinel safe for both uuid and text columns
+- Backend-only change: only supabase/schema.sql and prisma/seed.ts modified

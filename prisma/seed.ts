@@ -877,7 +877,11 @@ async function main() {
   console.log('Seeding Gstream database (Supabase)...')
   const supabase = createAdminSupabaseClient()
 
-  // Clean slate (order matters for FK constraints)
+  // Clean slate (order matters for FK constraints).
+  // Uses a valid zero-UUID ('00000000-0000-0000-0000-000000000000') as the
+  // sentinel — safe for both uuid columns (User.id) and text columns (all
+  // other tables) since no real row ever matches it.
+  const SENTINEL = '00000000-0000-0000-0000-000000000000'
   const tables = [
     'WatchProgress', 'WatchHistory', 'MyList', 'FeaturedBanner',
     'EpisodeServer', 'MovieServer', 'Episode', 'Season',
@@ -885,10 +889,10 @@ async function main() {
     'Movie', 'Series', 'StreamingServer', 'Genre', 'Category',
   ]
   for (const t of tables) {
-    await supabase.from(t).delete().neq('id', '00000000').then(() => {})
+    await supabase.from(t).delete().neq('id', SENTINEL).then(() => {})
   }
-  // User profiles (not auth.users)
-  await supabase.from('User').delete().neq('id', '00000000').then(() => {})
+  // User profiles (uuid id) — NOT auth.users (those are managed by Supabase Auth)
+  await supabase.from('User').delete().neq('id', SENTINEL).then(() => {})
 
   // Genres
   const genreMap = new Map<string, string>()
