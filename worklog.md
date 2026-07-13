@@ -136,3 +136,25 @@ Stage Summary:
 - Hero layout fixed (buttons no longer overlap row titles or dots)
 - All poster/backdrop images now load (0 broken)
 - Backend: Prisma + SQLite (local). Path to Supabase + Vercel documented for user.
+
+---
+Task ID: 13
+Agent: main
+Task: Re-theme entire app to premium purple/violet on black (no logic changes)
+
+Work Log:
+- Converted target hex palette to precise OKLCH: #7C3AED→oklch(0.541 0.247 293), #A855F7→oklch(0.627 0.233 304), #0A0A0A→oklch(0.145 0 0), #121212→oklch(0.182 0 0)
+- Rewrote src/app/globals.css :root tokens (background, card, popover, primary, secondary, muted, accent, ring, charts, sidebar) to purple/violet-on-black
+- Updated utilities: .glass, .glass-strong, .text-glow, .cinema-gradient, .hero-fade-*, .shimmer, scrollbar, selection, focus-visible ring — all now violet-tinted
+- Fixed 3 hardcoded crimson oklch(0.62 0.22 16) references: not-found.tsx radial gradient, auth-shell.tsx gradient panel, (text-glow already in CSS)
+- Admin dashboard: swapped "Movies" stat card icon tint from text-rose-400 → text-violet-400 (brand-aligned); kept other decorative icon tints (amber/emerald/sky/cyan/etc.) for stat-card distinction; kept semantic rose for suspended-state badges (destructive convention)
+- Kept amber for ratings/stars (gold = universal ratings convention, provides contrast against purple)
+- NO changes to: business logic, database code, Prisma, auth, API routes, routing, component structure, or functionality
+- Verified: dev server picked up CSS (had to force recompile to clear stale cache); pixel-sampled Play Now button = #7f3be7 (matches #7C3AED); VLM confirmed purple/violet-on-black across all 6 key pages (home, login, admin dashboard, admin movies, watch, search, profile)
+- Lint: 0 errors, 0 warnings; all 16 checked routes return 200
+
+Stage Summary:
+- Entire design system re-themed to premium purple (#7C3AED) + violet (#A855F7) on black (#0A0A0A) with dark-gray (#121212) surfaces and white text
+- All components (buttons, cards, forms, nav, modals, admin dashboard) follow automatically via semantic CSS tokens
+- Contrast, accessibility, and responsive behavior preserved
+- Zero functional changes — only CSS variables + 3 gradient color references updated

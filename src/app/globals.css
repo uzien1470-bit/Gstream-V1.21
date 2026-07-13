@@ -43,53 +43,62 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Gstream cinematic dark theme — dark mode only */
+/* ───────────────────────────────────────────────────────────
+   Gstream premium design system — purple/violet on black
+   Background #0A0A0A · Surfaces #121212 · Primary #7C3AED · Accent #A855F7
+   ─────────────────────────────────────────────────────────── */
 :root {
   --radius: 0.75rem;
 
-  /* Near-black cinematic background */
-  --background: oklch(0.13 0.008 280);
-  --foreground: oklch(0.97 0.005 60);
+  /* Base surfaces — near-black with a faint violet undertone */
+  --background: oklch(0.11 0.005 285);          /* #0A0A0A */
+  --foreground: oklch(0.98 0.002 285);          /* near-white */
 
-  --card: oklch(0.17 0.01 280);
-  --card-foreground: oklch(0.97 0.005 60);
+  --card: oklch(0.15 0.006 285);                /* #121212 */
+  --card-foreground: oklch(0.98 0.002 285);
 
-  --popover: oklch(0.16 0.012 280);
-  --popover-foreground: oklch(0.97 0.005 60);
+  --popover: oklch(0.14 0.007 285);             /* slightly darker than card */
+  --popover-foreground: oklch(0.98 0.002 285);
 
-  /* Crimson-rose premium accent */
-  --primary: oklch(0.62 0.22 16);
+  /* Primary — vivid purple #7C3AED */
+  --primary: oklch(0.54 0.24 295);
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.22 0.012 280);
-  --secondary-foreground: oklch(0.95 0.005 60);
+  /* Secondary — elevated dark surface for secondary buttons */
+  --secondary: oklch(0.2 0.008 285);
+  --secondary-foreground: oklch(0.96 0.004 285);
 
-  --muted: oklch(0.2 0.01 280);
-  --muted-foreground: oklch(0.68 0.01 280);
+  /* Muted — subtle backgrounds + muted text */
+  --muted: oklch(0.18 0.006 285);
+  --muted-foreground: oklch(0.7 0.012 285);
 
-  --accent: oklch(0.26 0.015 280);
-  --accent-foreground: oklch(0.97 0.005 60);
+  /* Accent — violet #A855F7 for hover/active states */
+  --accent: oklch(0.25 0.04 295);
+  --accent-foreground: oklch(0.98 0.002 285);
 
-  --destructive: oklch(0.64 0.22 25);
+  /* Destructive — red, kept for delete/suspend/error states */
+  --destructive: oklch(0.62 0.22 25);
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.62 0.22 16 / 60%);
+  --ring: oklch(0.54 0.24 295 / 60%);
 
-  --chart-1: oklch(0.62 0.22 16);
-  --chart-2: oklch(0.72 0.17 50);
-  --chart-3: oklch(0.6 0.14 280);
-  --chart-4: oklch(0.7 0.15 160);
-  --chart-5: oklch(0.75 0.18 90);
+  /* Chart palette — purple-forward with complementary hues */
+  --chart-1: oklch(0.54 0.24 295);   /* purple  */
+  --chart-2: oklch(0.6 0.22 315);    /* violet  */
+  --chart-3: oklch(0.62 0.17 245);   /* indigo  */
+  --chart-4: oklch(0.7 0.15 200);    /* cyan    */
+  --chart-5: oklch(0.75 0.18 90);    /* gold    */
 
-  --sidebar: oklch(0.15 0.01 280);
-  --sidebar-foreground: oklch(0.97 0.005 60);
-  --sidebar-primary: oklch(0.62 0.22 16);
+  /* Sidebar / admin surfaces */
+  --sidebar: oklch(0.13 0.005 285);
+  --sidebar-foreground: oklch(0.98 0.002 285);
+  --sidebar-primary: oklch(0.54 0.24 295);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.22 0.012 280);
-  --sidebar-accent-foreground: oklch(0.97 0.005 60);
+  --sidebar-accent: oklch(0.2 0.008 285);
+  --sidebar-accent-foreground: oklch(0.98 0.002 285);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.62 0.22 16 / 60%);
+  --sidebar-ring: oklch(0.54 0.24 295 / 60%);
 }
 
 @layer base {
@@ -104,7 +113,12 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* Custom scrollbar */
+  /* Selection uses brand purple */
+  ::selection {
+    background: oklch(0.54 0.24 295 / 35%);
+    color: oklch(0.99 0 0);
+  }
+  /* Custom scrollbar — subtle violet on hover */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -117,7 +131,7 @@
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(1 0 0 / 22%);
+    background: oklch(0.54 0.24 295 / 50%);
   }
   /* Hide scrollbar utility for rows */
   .no-scrollbar::-webkit-scrollbar {
@@ -127,46 +141,58 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  /* Focus-visible ring uses brand violet */
+  *:focus-visible {
+    outline-color: oklch(0.6 0.22 315 / 70%);
+  }
 }
 
-/* Glassmorphism utility */
+/* Glassmorphism + premium effects */
 @layer utilities {
   .glass {
-    background: oklch(0.16 0.01 280 / 70%);
-    backdrop-filter: blur(16px) saturate(140%);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    background: oklch(0.15 0.006 285 / 70%);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
     border: 1px solid oklch(1 0 0 / 8%);
   }
   .glass-strong {
-    background: oklch(0.15 0.012 280 / 88%);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    background: oklch(0.13 0.005 285 / 90%);
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
     border: 1px solid oklch(1 0 0 / 10%);
   }
   .text-glow {
-    text-shadow: 0 0 24px oklch(0.62 0.22 16 / 45%);
+    text-shadow: 0 0 28px oklch(0.54 0.24 295 / 55%), 0 0 60px oklch(0.6 0.22 315 / 25%);
   }
   .cinema-gradient {
-    background: linear-gradient(180deg, transparent 0%, oklch(0.13 0.008 280 / 40%) 50%, oklch(0.13 0.008 280) 100%);
+    background: linear-gradient(180deg, transparent 0%, oklch(0.11 0.005 285 / 40%) 50%, oklch(0.11 0.005 285) 100%);
   }
   .hero-fade-bottom {
-    background: linear-gradient(180deg, transparent 40%, oklch(0.13 0.008 280 / 85%) 80%, oklch(0.13 0.008 280) 100%);
+    background: linear-gradient(180deg, transparent 40%, oklch(0.11 0.005 285 / 85%) 80%, oklch(0.11 0.005 285) 100%);
   }
   .hero-fade-left {
-    background: linear-gradient(90deg, oklch(0.13 0.008 280 / 92%) 0%, oklch(0.13 0.008 280 / 55%) 45%, transparent 75%);
+    background: linear-gradient(90deg, oklch(0.11 0.005 285 / 92%) 0%, oklch(0.11 0.005 285 / 55%) 45%, transparent 75%);
   }
   .card-shadow {
-    box-shadow: 0 18px 40px -18px oklch(0 0 0 / 80%);
+    box-shadow: 0 18px 40px -18px oklch(0 0 0 / 85%);
+  }
+  /* Premium purple glow ring for hoverable cards */
+  .card-glow-hover {
+    transition: box-shadow 0.3s ease, ring-color 0.3s ease;
+  }
+  .card-glow-hover:hover {
+    box-shadow: 0 0 0 2px oklch(0.54 0.24 295 / 60%), 0 20px 50px -20px oklch(0.54 0.24 295 / 45%);
   }
 }
 
-/* Shimmer skeleton */
+/* Shimmer skeleton — violet-tinted */
 @keyframes shimmer {
   0% { background-position: -1000px 0; }
   100% { background-position: 1000px 0; }
 }
 .shimmer {
-  background: linear-gradient(90deg, oklch(0.18 0.01 280) 0%, oklch(0.24 0.012 280) 50%, oklch(0.18 0.01 280) 100%);
+  background: linear-gradient(90deg, oklch(0.15 0.006 285) 0%, oklch(0.21 0.02 295) 50%, oklch(0.15 0.006 285) 100%);
   background-size: 1000px 100%;
   animation: shimmer 2s infinite linear;
 }
+/* retheme trigger */

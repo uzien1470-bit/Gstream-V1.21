@@ -29,12 +29,12 @@ export function AuthShell({
     <div className="relative grid min-h-screen lg:grid-cols-2">
       {/* Left visual */}
       <div className="relative hidden overflow-hidden lg:block">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/30 via-background to-secondary" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/40 via-background to-secondary" />
         <div
-          className="absolute inset-0 opacity-30"
+          className="absolute inset-0 opacity-40"
           style={{
             backgroundImage:
-              'radial-gradient(circle at 20% 30%, oklch(0.62 0.22 16 / 0.4), transparent 40%), radial-gradient(circle at 80% 70%, oklch(0.7 0.15 50 / 0.3), transparent 40%)',
+              'radial-gradient(circle at 20% 30%, oklch(0.54 0.24 295 / 0.5), transparent 40%), radial-gradient(circle at 80% 70%, oklch(0.6 0.22 315 / 0.35), transparent 40%)',
           }}
         />
         <div className="relative z-10 flex h-full flex-col justify-between p-12">

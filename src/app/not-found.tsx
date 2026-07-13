@@ -9,7 +9,7 @@ export default function NotFound() {
         className="absolute inset-0 opacity-40"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 30% 20%, oklch(0.62 0.22 16 / 0.25), transparent 45%), radial-gradient(circle at 70% 80%, oklch(0.5 0.15 280 / 0.2), transparent 45%)',
+            'radial-gradient(circle at 30% 20%, oklch(0.54 0.24 295 / 0.3), transparent 45%), radial-gradient(circle at 70% 80%, oklch(0.6 0.22 315 / 0.22), transparent 45%)',
         }}
       />
       <div className="relative z-10 text-center">

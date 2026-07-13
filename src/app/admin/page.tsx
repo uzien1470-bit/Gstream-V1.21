@@ -21,7 +21,7 @@ interface Activity {
 }
 
 const STAT_CARDS = [
-  { key: 'movies', label: 'Movies', icon: Film, href: '/admin/movies', color: 'text-rose-400' },
+  { key: 'movies', label: 'Movies', icon: Film, href: '/admin/movies', color: 'text-violet-400' },
   { key: 'series', label: 'TV Series', icon: Tv, href: '/admin/tv-series', color: 'text-amber-400' },
   { key: 'anime', label: 'Anime', icon: Sparkles, href: '/admin/anime', color: 'text-purple-400' },
   { key: 'seasons', label: 'Seasons', icon: FolderTree, href: '/admin/seasons', color: 'text-sky-400' },
