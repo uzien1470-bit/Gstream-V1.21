@@ -52,10 +52,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <div className="flex h-full flex-col">
-      <Link href="/admin" className="flex items-center gap-2 px-6 py-5">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <Shield className="h-4 w-4" />
-        </span>
+      <Link href="/admin" className="group flex items-center gap-2 px-6 py-5">
+        { }
+        <img
+          src="/logo.png"
+          alt="Gstream"
+          className="h-8 w-8 rounded-lg shadow-lg shadow-primary/20 transition-transform group-hover:scale-105"
+        />
         <span className="text-lg font-extrabold" style={{ fontFamily: 'var(--font-display)' }}>
           G<span className="text-primary">stream</span>
         </span>

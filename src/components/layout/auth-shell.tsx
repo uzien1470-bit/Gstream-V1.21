@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/hooks/use-session'
+import { BrandMark } from '@/components/layout/brand-mark'
 
 export function AuthShell({
   title,
@@ -38,16 +39,7 @@ export function AuthShell({
           }}
         />
         <div className="relative z-10 flex h-full flex-col justify-between p-12">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </span>
-            <span className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              G<span className="text-primary">stream</span>
-            </span>
-          </Link>
+          <BrandMark href="/" iconClassName="h-10 w-10" wordmarkClassName="text-3xl" />
           <div>
             <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-glow" style={{ fontFamily: 'var(--font-display)' }}>
               The cinematic<br />streaming universe.
@@ -78,16 +70,7 @@ export function AuthShell({
       <div className="flex items-center justify-center px-4 py-12 sm:px-8">
         <div className="w-full max-w-md">
           {/* Mobile logo */}
-          <Link href="/" className="mb-8 flex items-center justify-center gap-2 lg:hidden">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </span>
-            <span className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              G<span className="text-primary">stream</span>
-            </span>
-          </Link>
+          <BrandMark href="/" className="mb-8 justify-center lg:hidden" />
 
           <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
             {title}

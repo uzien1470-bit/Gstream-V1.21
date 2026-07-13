@@ -14,6 +14,7 @@ import { EmbedPlayer } from '@/components/watch/embed-player'
 import { EpisodeSelector } from '@/components/watch/episode-selector'
 import { ContentCard } from '@/components/content/content-card'
 import { SmartImage } from '@/components/content/smart-image'
+import { BrandMark } from '@/components/layout/brand-mark'
 import { useMyList } from '@/hooks/use-my-list'
 import { useSession } from '@/hooks/use-session'
 import { toast } from 'sonner'
@@ -122,16 +123,7 @@ export function WatchClient({ type, id, initialEpisodeId, detail, recommendation
       {/* Top bar */}
       <div className="fixed inset-x-0 top-0 z-50 glass-strong border-b border-border/60">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </span>
-            <span className="text-xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              G<span className="text-primary">stream</span>
-            </span>
-          </Link>
+          <BrandMark href="/" iconClassName="h-8 w-8" wordmarkClassName="text-xl" />
           <Link
             href={type === 'movie' ? '/movies' : type === 'anime' ? '/anime' : '/tv-series'}
             className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"

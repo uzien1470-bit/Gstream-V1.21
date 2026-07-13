@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Film, Tv, Sparkles, Mail, Globe, Github, Twitter } from 'lucide-react'
+import { BrandMark } from '@/components/layout/brand-mark'
 
 const FOOTER_LINKS = [
   {
@@ -58,16 +59,7 @@ export function SiteFooter() {
       <div className="mx-auto max-w-[1600px] px-4 py-12 sm:px-6 lg:px-10">
         <div className="grid gap-10 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
           <div>
-            <Link href="/" className="flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </span>
-              <span className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                G<span className="text-primary">stream</span>
-              </span>
-            </Link>
+            <BrandMark href="/" />
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">
               The premium cinematic streaming destination. Unlimited movies, series and anime — beautifully curated, endlessly streamable.
             </p>

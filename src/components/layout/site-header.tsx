@@ -18,6 +18,7 @@ import { useSession } from '@/hooks/use-session'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet'
+import { BrandMark } from '@/components/layout/brand-mark'
 
 const NAV = [
   { href: '/', label: 'Home' },
@@ -74,19 +75,7 @@ export function SiteHeader() {
     >
       <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-4 sm:px-6 lg:px-10">
         {/* Logo */}
-        <Link href="/" className="group flex shrink-0 items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform group-hover:scale-105">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </span>
-          <span
-            className="text-2xl font-extrabold tracking-tight text-foreground"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            G<span className="text-primary">stream</span>
-          </span>
-        </Link>
+        <BrandMark href="/" />
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-1 lg:flex">
@@ -239,8 +228,10 @@ export function SiteHeader() {
             </SheetTrigger>
           <SheetContent side="left" className="w-72 glass-strong p-0">
             <SheetHeader className="px-6 pt-6">
-              <SheetTitle className="text-left" style={{ fontFamily: 'var(--font-display)' }}>
-                G<span className="text-primary">stream</span>
+              <SheetTitle asChild>
+                <div className="text-left">
+                  <BrandMark href="/" showWordmark />
+                </div>
               </SheetTitle>
             </SheetHeader>
             <div className="px-4 py-4">

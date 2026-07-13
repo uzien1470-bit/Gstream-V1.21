@@ -26,7 +26,8 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Gstream" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/logo.png",
+    apple: "/logo.png",
   },
   openGraph: {
     title: "Gstream — Premium Streaming",

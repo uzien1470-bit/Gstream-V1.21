@@ -176,3 +176,28 @@ Work Log:
 Stage Summary:
 - Hydration mismatch resolved — the mobile Sheet menu now mounts client-only, eliminating the Radix useId server/client divergence
 - No functional changes — mobile menu works identically, just renders one frame later (imperceptible)
+
+---
+Task ID: 15
+Agent: main
+Task: Replace inline SVG brand mark with uploaded logo across all placements
+
+Work Log:
+- Analyzed uploaded logo (1254x1254 PNG, square icon, purple-to-red gradient play/triangle on dark bg, no text) via VLM
+- Copied to public/logo.png for static serving
+- Created reusable BrandMark component (src/components/layout/brand-mark.tsx) — renders logo image + "Gstream" wordmark with configurable sizes, used by all placements
+- Replaced inline SVG play-icon brand marks in 5 locations:
+  1. SiteHeader desktop (header logo)
+  2. SiteHeader mobile sheet title
+  3. SiteFooter brand
+  4. AuthShell desktop left panel (login/register/forgot/reset)
+  5. AuthShell mobile top logo
+  6. WatchClient top bar
+- Replaced Shield-icon brand mark in AdminShell sidebar with logo (kept "Admin" badge)
+- Updated root layout favicon: /logo.svg → /logo.png (also added apple icon)
+- Verified: 0 leftover inline SVG play-icon brand marks; logo.png loads on home (header+footer), login (2x), watch (1x), admin (sidebar); VLM confirmed logo clearly visible & well-sized in header
+- Lint: 0 errors, 0 warnings; all 9 checked routes return 200
+
+Stage Summary:
+- Brand identity unified — the uploaded logo now appears everywhere the Gstream brand mark is shown (header, footer, auth pages, watch top bar, admin sidebar, browser favicon, apple touch icon)
+- Reusable BrandMark component ensures consistency and easy future updates (change one file to rebrand)
