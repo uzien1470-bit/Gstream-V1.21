@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/auth'
 
 const PAGE_SIZE = 20
@@ -15,41 +15,35 @@ export async function GET(req: NextRequest) {
   const q = (searchParams.get('q') ?? '').trim()
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
 
-  const where = q
-    ? {
-        OR: [
-          { email: { contains: q } },
-          { name: { contains: q } },
-        ],
-      }
-    : {}
+  try {
+    const supabase = createAdminSupabaseClient()
 
-  const [items, total] = await Promise.all([
-    db.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        avatarUrl: true,
-        role: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    }),
-    db.user.count({ where }),
-  ])
+    let query = supabase
+      .from('User')
+      .select('id, email, name, avatarUrl, role, status, createdAt, updatedAt', { count: 'exact' })
+      .order('createdAt', { ascending: false })
 
-  return NextResponse.json({
-    items,
-    total,
-    page,
-    limit: PAGE_SIZE,
-    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
-    currentUserId: current.id,
-  })
+    if (q) {
+      query = query.or(`email.ilike.%${q}%,name.ilike.%${q}%`)
+    }
+
+    const from = (page - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+
+    const { data: items, count, error } = await query.range(from, to)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      items: items ?? [],
+      total: count ?? 0,
+      page,
+      limit: PAGE_SIZE,
+      totalPages: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)),
+      currentUserId: current.id,
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
+  }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -13,49 +13,83 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser()
-  if (!user) {
-    return NextResponse.json({ ok: true }) // silently ignore for guests
-  }
-  const body = await req.json().catch(() => null)
-  const parsed = schema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
-  }
-  const { contentId, contentType, episodeId, progress, duration, position } = parsed.data
+  try {
+    const user = await getSessionUser()
+    if (!user) {
+      return NextResponse.json({ ok: true }) // silently ignore for guests
+    }
+    const body = await req.json().catch(() => null)
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+    }
+    const { contentId, contentType, episodeId, progress, duration, position } =
+      parsed.data
+    const isMovie = contentType === 'movie'
 
-  const where: any = { userId: user.id }
-  if (contentType === 'movie') where.movieId = contentId
-  else where.seriesId = contentId
-  if (episodeId) where.episodeId = episodeId
+    try {
+      const supabase = await createServerSupabaseClient()
 
-  const data: any = {
-    progress,
-    duration: duration ?? 0,
-    position: position ?? 0,
-    contentType,
+      // Look up an existing WatchProgress row (composite key:
+      // userId + movieId/seriesId + episodeId).
+      let existingQuery = supabase
+        .from('WatchProgress')
+        .select('id')
+        .eq('userId', user.id)
+      if (isMovie) {
+        existingQuery = existingQuery.eq('movieId', contentId)
+      } else {
+        existingQuery = existingQuery.eq('seriesId', contentId)
+      }
+      if (episodeId) {
+        existingQuery = existingQuery.eq('episodeId', episodeId)
+      } else {
+        existingQuery = existingQuery.is('episodeId', null)
+      }
+      const { data: existing } = await existingQuery.maybeSingle()
+
+      const fields: Record<string, unknown> = {
+        progress,
+        duration: duration ?? 0,
+        position: position ?? 0,
+        contentType,
+      }
+
+      if (existing) {
+        await supabase
+          .from('WatchProgress')
+          .update(fields)
+          .eq('id', (existing as { id: string }).id)
+      } else {
+        const insert: Record<string, unknown> = {
+          userId: user.id,
+          ...fields,
+        }
+        if (isMovie) insert.movieId = contentId
+        else insert.seriesId = contentId
+        if (episodeId) insert.episodeId = episodeId
+        await supabase.from('WatchProgress').insert(insert)
+      }
+
+      // Best-effort WatchHistory insert
+      try {
+        const hist: Record<string, unknown> = {
+          userId: user.id,
+          contentType,
+        }
+        if (isMovie) hist.movieId = contentId
+        else hist.seriesId = contentId
+        if (episodeId) hist.episodeId = episodeId
+        await supabase.from('WatchHistory').insert(hist)
+      } catch {
+        // ignore — best-effort
+      }
+
+      return NextResponse.json({ ok: true })
+    } catch {
+      return NextResponse.json({ ok: true })
+    }
+  } catch {
+    return NextResponse.json({ ok: true })
   }
-  if (contentType === 'movie') data.movieId = contentId
-  else data.seriesId = contentId
-  if (episodeId) data.episodeId = episodeId
-
-  // upsert
-  const existing = await db.watchProgress.findFirst({ where })
-  if (existing) {
-    await db.watchProgress.update({ where: { id: existing.id }, data })
-  } else {
-    await db.watchProgress.create({ data: { userId: user.id, ...data } })
-  }
-
-  // also record a history entry (idempotent-ish: insert)
-  const histData: any = {
-    userId: user.id,
-    contentType,
-  }
-  if (contentType === 'movie') histData.movieId = contentId
-  else histData.seriesId = contentId
-  if (episodeId) histData.episodeId = episodeId
-  await db.watchHistory.create({ data: histData }).catch(() => {})
-
-  return NextResponse.json({ ok: true })
 }

@@ -1,4 +1,12 @@
-import { db } from '@/lib/db'
+/**
+ * Gstream data-access layer.
+ *
+ * All catalogue reads go through here. Uses @supabase/supabase-js (the server
+ * anon client — public RLS allows reading published catalogue). Every query
+ * is wrapped so that if Supabase is unreachable or unconfigured the functions
+ * resolve to empty results instead of throwing — the public site always loads.
+ */
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type {
   ContentCardData,
   ContentDetail,
@@ -8,13 +16,13 @@ import type {
   ServerOption,
   CastMember,
 } from '@/lib/types'
-import type { Movie, Series, Episode, Season } from '@prisma/client'
+import type { HeroSlide } from '@/components/content/hero-banner'
 
-function parseCast(castJson: string): CastMember[] {
+function parseCast(castJson: unknown): CastMember[] {
+  if (typeof castJson !== 'string') return []
   try {
     const parsed = JSON.parse(castJson)
-    if (Array.isArray(parsed)) return parsed
-    return []
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
@@ -27,7 +35,25 @@ function sortServers(servers: ServerOption[]): ServerOption[] {
   })
 }
 
-export function movieToCard(m: Movie, genres: { name: string }[] = []): ContentCardData {
+// ──────────────────────────── Row → card mappers ────────────────────────────
+
+interface MovieRow {
+  id: string; title: string; slug: string; synopsis: string
+  posterUrl: string; backdropUrl: string; logoUrl: string | null
+  releaseYear: number; rating: number; runtime: number
+  trending?: boolean; popular?: boolean; topRated?: boolean; recentlyAdded?: boolean
+  genres?: { name: string }[]
+}
+
+interface SeriesRow {
+  id: string; title: string; slug: string; synopsis: string
+  posterUrl: string; backdropUrl: string; logoUrl: string | null
+  releaseYear: number; rating: number; type: string
+  trending?: boolean; popular?: boolean; topRated?: boolean; recentlyAdded?: boolean
+  genres?: { name: string }[]
+}
+
+export function movieToCard(m: MovieRow): ContentCardData {
   return {
     id: m.id,
     title: m.title,
@@ -40,7 +66,7 @@ export function movieToCard(m: Movie, genres: { name: string }[] = []): ContentC
     rating: m.rating,
     runtime: m.runtime,
     synopsis: m.synopsis,
-    genres: genres.map((g) => g.name),
+    genres: (m.genres ?? []).map((g) => g.name),
     trending: m.trending,
     popular: m.popular,
     topRated: m.topRated,
@@ -48,7 +74,7 @@ export function movieToCard(m: Movie, genres: { name: string }[] = []): ContentC
   }
 }
 
-export function seriesToCard(s: Series, genres: { name: string }[] = []): ContentCardData {
+export function seriesToCard(s: SeriesRow): ContentCardData {
   return {
     id: s.id,
     title: s.title,
@@ -60,7 +86,7 @@ export function seriesToCard(s: Series, genres: { name: string }[] = []): Conten
     releaseYear: s.releaseYear,
     rating: s.rating,
     synopsis: s.synopsis,
-    genres: genres.map((g) => g.name),
+    genres: (s.genres ?? []).map((g) => g.name),
     trending: s.trending,
     popular: s.popular,
     topRated: s.topRated,
@@ -68,350 +94,402 @@ export function seriesToCard(s: Series, genres: { name: string }[] = []): Conten
   }
 }
 
-async function loadGenresForMovie(movieId: string): Promise<{ name: string }[]> {
-  const m = await db.movie.findUnique({
-    where: { id: movieId },
-    select: { genres: { select: { name: true } } },
-  })
-  return m?.genres ?? []
+// ──────────────────────────── Public catalogue queries ────────────────────────────
+
+export async function getGenres(): Promise<{ name: string; slug: string }[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('Genre')
+      .select('name, slug')
+      .order('name', { ascending: true })
+    if (error || !data) return []
+    return data as { name: string; slug: string }[]
+  } catch {
+    return []
+  }
 }
 
-async function loadGenresForSeries(seriesId: string): Promise<{ name: string }[]> {
-  const s = await db.series.findUnique({
-    where: { id: seriesId },
-    select: { genres: { select: { name: true } } },
-  })
-  return s?.genres ?? []
+interface MovieCardOpts {
+  trending?: boolean; popular?: boolean; topRated?: boolean
+  recentlyAdded?: boolean; featured?: boolean
+  limit?: number; categorySlug?: string; genreSlug?: string
 }
 
-export async function getMovieCards(opts: {
-  trending?: boolean
-  popular?: boolean
-  topRated?: boolean
-  recentlyAdded?: boolean
-  featured?: boolean
-  limit?: number
-  categorySlug?: string
-  genreSlug?: string
-}): Promise<ContentCardData[]> {
-  const where: any = { status: 'published' }
-  if (opts.trending) where.trending = true
-  if (opts.popular) where.popular = true
-  if (opts.topRated) where.topRated = true
-  if (opts.recentlyAdded) where.recentlyAdded = true
-  if (opts.featured) where.featured = true
-  if (opts.categorySlug) where.categories = { some: { slug: opts.categorySlug } }
-  if (opts.genreSlug) where.genres = { some: { slug: opts.genreSlug } }
-
-  const movies = await db.movie.findMany({
-    where,
-    orderBy: opts.topRated
-      ? { rating: 'desc' }
-      : opts.recentlyAdded
-        ? { createdAt: 'desc' }
-        : { voteCount: 'desc' },
-    take: opts.limit ?? 20,
-    include: { genres: { select: { name: true } } },
-  })
-  return movies.map((m) => movieToCard(m, m.genres))
+export async function getMovieCards(opts: MovieCardOpts = {}): Promise<ContentCardData[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    let query = supabase
+      .from('Movie')
+      .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, trending, popular, topRated, recentlyAdded, genres:Genre!Movie_genres(name)')
+      .eq('status', 'published')
+    if (opts.trending) query = query.eq('trending', true)
+    if (opts.popular) query = query.eq('popular', true)
+    if (opts.topRated) query = query.order('rating', { ascending: false })
+    if (opts.recentlyAdded) query = query.order('createdAt', { ascending: false })
+    if (opts.featured) query = query.eq('featured', true)
+    if (opts.genreSlug) query = query.filter('genres.slug', 'eq', opts.genreSlug)
+    if (!opts.topRated && !opts.recentlyAdded) query = query.order('voteCount', { ascending: false })
+    query = query.limit(opts.limit ?? 20)
+    const { data, error } = await query
+    if (error || !data) return []
+    return (data as MovieRow[]).map(movieToCard)
+  } catch {
+    return []
+  }
 }
 
-export async function getSeriesCards(opts: {
+interface SeriesCardOpts {
   type?: 'series' | 'anime'
-  trending?: boolean
-  popular?: boolean
-  topRated?: boolean
-  recentlyAdded?: boolean
-  featured?: boolean
-  limit?: number
-  categorySlug?: string
-  genreSlug?: string
-}): Promise<ContentCardData[]> {
-  const where: any = { status: 'published' }
-  if (opts.type) where.type = opts.type
-  if (opts.trending) where.trending = true
-  if (opts.popular) where.popular = true
-  if (opts.topRated) where.topRated = true
-  if (opts.recentlyAdded) where.recentlyAdded = true
-  if (opts.featured) where.featured = true
-  if (opts.categorySlug) where.categories = { some: { slug: opts.categorySlug } }
-  if (opts.genreSlug) where.genres = { some: { slug: opts.genreSlug } }
-
-  const series = await db.series.findMany({
-    where,
-    orderBy: opts.topRated
-      ? { rating: 'desc' }
-      : opts.recentlyAdded
-        ? { createdAt: 'desc' }
-        : { voteCount: 'desc' },
-    take: opts.limit ?? 20,
-    include: { genres: { select: { name: true } } },
-  })
-  return series.map((s) => seriesToCard(s, s.genres))
+  trending?: boolean; popular?: boolean; topRated?: boolean
+  recentlyAdded?: boolean; featured?: boolean
+  limit?: number; categorySlug?: string; genreSlug?: string
 }
+
+export async function getSeriesCards(opts: SeriesCardOpts = {}): Promise<ContentCardData[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    let query = supabase
+      .from('Series')
+      .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, genres:Genre!Series_genres(name)')
+      .eq('status', 'published')
+    if (opts.type) query = query.eq('type', opts.type)
+    if (opts.trending) query = query.eq('trending', true)
+    if (opts.popular) query = query.eq('popular', true)
+    if (opts.topRated) query = query.order('rating', { ascending: false })
+    if (opts.recentlyAdded) query = query.order('createdAt', { ascending: false })
+    if (opts.featured) query = query.eq('featured', true)
+    if (opts.genreSlug) query = query.filter('genres.slug', 'eq', opts.genreSlug)
+    if (!opts.topRated && !opts.recentlyAdded) query = query.order('voteCount', { ascending: false })
+    query = query.limit(opts.limit ?? 20)
+    const { data, error } = await query
+    if (error || !data) return []
+    return (data as SeriesRow[]).map(seriesToCard)
+  } catch {
+    return []
+  }
+}
+
+// ──────────────────────────── Detail ────────────────────────────
 
 export async function getMovieDetail(id: string): Promise<ContentDetail | null> {
-  const movie = await db.movie.findUnique({
-    where: { id },
-    include: {
-      genres: true,
-      categories: true,
-      servers: {
-        include: { server: true },
-        where: { status: 'active' },
-      },
-    },
-  })
-  if (!movie) return null
-
-  const servers: ServerOption[] = movie.servers
-    .filter((ms) => ms.server.status === 'active')
-    .map((ms) => ({
-      id: ms.id,
-      name: ms.server.name,
-      embedUrl: ms.embedUrl,
-      quality: ms.quality,
-      priority: ms.priority,
-      status: ms.status,
-    }))
-
-  return {
-    id: movie.id,
-    title: movie.title,
-    slug: movie.slug,
-    type: 'movie',
-    synopsis: movie.synopsis,
-    posterUrl: movie.posterUrl,
-    backdropUrl: movie.backdropUrl,
-    logoUrl: movie.logoUrl,
-    releaseYear: movie.releaseYear,
-    rating: movie.rating,
-    voteCount: movie.voteCount,
-    runtime: movie.runtime,
-    trailerUrl: movie.trailerUrl,
-    genres: movie.genres.map((g) => g.name),
-    categories: movie.categories.map((c) => c.name),
-    cast: parseCast(movie.cast),
-    servers: sortServers(servers),
-    seasons: [],
-    featured: movie.featured,
-    trending: movie.trending,
-    popular: movie.popular,
-    topRated: movie.topRated,
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('Movie')
+      .select('*, genres:Genre!Movie_genres(name), categories:Category!Movie_categories(name), servers:MovieServer(*, server:StreamingServer(*))')
+      .eq('id', id)
+      .single()
+    if (error || !data) return null
+    const m = data as any
+    const servers: ServerOption[] = (m.servers ?? [])
+      .filter((ms: any) => ms.server?.status === 'active' && ms.status === 'active')
+      .map((ms: any) => ({
+        id: ms.id,
+        name: ms.server.name,
+        embedUrl: ms.embedUrl,
+        quality: ms.quality,
+        priority: ms.priority,
+        status: ms.status,
+      }))
+    return {
+      id: m.id, title: m.title, slug: m.slug, type: 'movie',
+      synopsis: m.synopsis, posterUrl: m.posterUrl, backdropUrl: m.backdropUrl,
+      logoUrl: m.logoUrl, releaseYear: m.releaseYear, rating: m.rating,
+      voteCount: m.voteCount, runtime: m.runtime, trailerUrl: m.trailerUrl,
+      genres: (m.genres ?? []).map((g: any) => g.name),
+      categories: (m.categories ?? []).map((c: any) => c.name),
+      cast: parseCast(m.cast), servers: sortServers(servers), seasons: [],
+      featured: m.featured, trending: m.trending, popular: m.popular, topRated: m.topRated,
+    }
+  } catch {
+    return null
   }
 }
 
 export async function getSeriesDetail(id: string): Promise<ContentDetail | null> {
-  const series = await db.series.findUnique({
-    where: { id },
-    include: {
-      genres: true,
-      categories: true,
-      seasons: {
-        orderBy: { seasonNumber: 'asc' },
-        include: {
-          episodes: {
-            orderBy: { episodeNumber: 'asc' },
-            include: {
-              servers: {
-                include: { server: true },
-                where: { status: 'active' },
-              },
-            },
-          },
-        },
-      },
-    },
-  })
-  if (!series) return null
-
-  const seasons: SeasonData[] = series.seasons.map((season: Season) => ({
-    id: season.id,
-    seasonNumber: season.seasonNumber,
-    title: season.title,
-    description: season.description,
-    posterUrl: season.posterUrl,
-    episodes: season.episodes.map((ep: Episode) => ({
-      id: ep.id,
-      episodeNumber: ep.episodeNumber,
-      title: ep.title,
-      description: ep.description,
-      thumbnailUrl: ep.thumbnailUrl,
-      runtime: ep.runtime,
-      airDate: ep.airDate,
-      servers: sortServers(
-        ep.servers
-          .filter((es) => es.server.status === 'active')
-          .map((es) => ({
-            id: es.id,
-            name: es.server.name,
-            embedUrl: es.embedUrl,
-            quality: es.quality,
-            priority: es.priority,
-            status: es.status,
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('Series')
+      .select('*, genres:Genre!Series_genres(name), categories:Category!Series_categories(name), seasons:Season(*, episodes:Episode(*, servers:EpisodeServer(*, server:StreamingServer(*))))')
+      .eq('id', id)
+      .single()
+    if (error || !data) return null
+    const s = data as any
+    const seasons: SeasonData[] = (s.seasons ?? [])
+      .slice()
+      .sort((a: any, b: any) => a.seasonNumber - b.seasonNumber)
+      .map((season: any) => ({
+        id: season.id,
+        seasonNumber: season.seasonNumber,
+        title: season.title,
+        description: season.description,
+        posterUrl: season.posterUrl,
+        episodes: (season.episodes ?? [])
+          .slice()
+          .sort((a: any, b: any) => a.episodeNumber - b.episodeNumber)
+          .map((ep: any): EpisodeData => ({
+            id: ep.id,
+            episodeNumber: ep.episodeNumber,
+            title: ep.title,
+            description: ep.description,
+            thumbnailUrl: ep.thumbnailUrl,
+            runtime: ep.runtime,
+            airDate: ep.airDate,
+            servers: sortServers(
+              (ep.servers ?? [])
+                .filter((es: any) => es.server?.status === 'active' && es.status === 'active')
+                .map((es: any): ServerOption => ({
+                  id: es.id,
+                  name: es.server.name,
+                  embedUrl: es.embedUrl,
+                  quality: es.quality,
+                  priority: es.priority,
+                  status: es.status,
+                })),
+            ),
           })),
-      ),
-    })),
-  }))
-
-  return {
-    id: series.id,
-    title: series.title,
-    slug: series.slug,
-    type: series.type === 'anime' ? 'anime' : 'series',
-    synopsis: series.synopsis,
-    posterUrl: series.posterUrl,
-    backdropUrl: series.backdropUrl,
-    logoUrl: series.logoUrl,
-    releaseYear: series.releaseYear,
-    rating: series.rating,
-    voteCount: series.voteCount,
-    runtime: 0,
-    trailerUrl: series.trailerUrl,
-    genres: series.genres.map((g) => g.name),
-    categories: series.categories.map((c) => c.name),
-    cast: parseCast(series.cast),
-    servers: [],
-    seasons,
-    featured: series.featured,
-    trending: series.trending,
-    popular: series.popular,
-    topRated: series.topRated,
+      }))
+    return {
+      id: s.id, title: s.title, slug: s.slug,
+      type: s.type === 'anime' ? 'anime' : 'series',
+      synopsis: s.synopsis, posterUrl: s.posterUrl, backdropUrl: s.backdropUrl,
+      logoUrl: s.logoUrl, releaseYear: s.releaseYear, rating: s.rating,
+      voteCount: s.voteCount, runtime: 0, trailerUrl: s.trailerUrl,
+      genres: (s.genres ?? []).map((g: any) => g.name),
+      categories: (s.categories ?? []).map((c: any) => c.name),
+      cast: parseCast(s.cast), servers: [], seasons,
+      featured: s.featured, trending: s.trending, popular: s.popular, topRated: s.topRated,
+    }
+  } catch {
+    return null
   }
 }
 
-export async function getDetail(
-  type: ContentType,
-  id: string,
-): Promise<ContentDetail | null> {
+export async function getDetail(type: ContentType, id: string): Promise<ContentDetail | null> {
   if (type === 'movie') return getMovieDetail(id)
   return getSeriesDetail(id)
 }
+
+// ──────────────────────────── Recommendations ────────────────────────────
 
 export async function getRecommendations(
   type: ContentType,
   id: string,
   limit = 12,
 ): Promise<ContentCardData[]> {
-  // Find by shared genres
-  let genreNames: string[] = []
-  if (type === 'movie') {
-    const m = await db.movie.findUnique({ where: { id }, include: { genres: true } })
-    genreNames = m?.genres.map((g) => g.name) ?? []
-  } else {
-    const s = await db.series.findUnique({ where: { id }, include: { genres: true } })
-    genreNames = s?.genres.map((g) => g.name) ?? []
-  }
-  if (genreNames.length === 0) return []
+  try {
+    const supabase = await createServerSupabaseClient()
+    const table = type === 'movie' ? 'Movie' : 'Series'
+    const { data: item } = await supabase
+      .from(table)
+      .select('genres:Genre!Movie_genres(name)')
+      .eq('id', id)
+      .single()
+    const genreNames: string[] = ((item as any)?.genres ?? []).map((g: any) => g.name)
+    if (genreNames.length === 0) return []
 
-  const [movies, series] = await Promise.all([
-    db.movie.findMany({
-      where: {
-        id: { not: id },
-        status: 'published',
-        genres: { some: { name: { in: genreNames } } },
-      },
-      take: limit,
-      orderBy: { rating: 'desc' },
-      include: { genres: { select: { name: true } } },
-    }),
-    db.series.findMany({
-      where: {
-        id: { not: id },
-        status: 'published',
-        genres: { some: { name: { in: genreNames } } },
-      },
-      take: limit,
-      orderBy: { rating: 'desc' },
-      include: { genres: { select: { name: true } } },
-    }),
-  ])
-  return [...movies.map((m) => movieToCard(m, m.genres)), ...series.map((s) => seriesToCard(s, s.genres))].slice(0, limit)
+    const [moviesRes, seriesRes] = await Promise.all([
+      supabase
+        .from('Movie')
+        .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, trending, popular, topRated, recentlyAdded, genres:Genre!Movie_genres(name)')
+        .neq('id', id)
+        .eq('status', 'published')
+        .filter('genres.name', 'in', `(${genreNames.join(',')})`)
+        .order('rating', { ascending: false })
+        .limit(limit),
+      supabase
+        .from('Series')
+        .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, genres:Genre!Series_genres(name)')
+        .neq('id', id)
+        .eq('status', 'published')
+        .filter('genres.name', 'in', `(${genreNames.join(',')})`)
+        .order('rating', { ascending: false })
+        .limit(limit),
+    ])
+    const movies = (moviesRes.data ?? []) as MovieRow[]
+    const series = (seriesRes.data ?? []) as SeriesRow[]
+    return [...movies.map(movieToCard), ...series.map(seriesToCard)].slice(0, limit)
+  } catch {
+    return []
+  }
 }
 
-export async function searchContent(query: string, filters?: {
-  type?: ContentType | 'all'
-  genre?: string
-  year?: number
-}): Promise<ContentCardData[]> {
-  const q = query.trim()
-  const movieWhere: any = { status: 'published' }
-  const seriesWhere: any = { status: 'published' }
+// ──────────────────────────── Search ────────────────────────────
 
-  if (q) {
-    movieWhere.OR = [
-      { title: { contains: q } },
-      { synopsis: { contains: q } },
-      { cast: { contains: q } },
-    ]
-    seriesWhere.OR = [
-      { title: { contains: q } },
-      { synopsis: { contains: q } },
-      { cast: { contains: q } },
-    ]
-  }
-  if (q.match(/^\d{4}$/)) {
-    movieWhere.releaseYear = Number(q)
-    seriesWhere.releaseYear = Number(q)
-  }
-  if (filters?.genre) {
-    movieWhere.genres = { some: { slug: filters.genre } }
-    seriesWhere.genres = { some: { slug: filters.genre } }
-  }
-  if (filters?.year) {
-    movieWhere.releaseYear = filters.year
-    seriesWhere.releaseYear = filters.year
-  }
+export async function searchContent(
+  query: string,
+  filters?: { type?: ContentType | 'all'; genre?: string; year?: number },
+): Promise<ContentCardData[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const q = query.trim()
+    const isYear = /^\d{4}$/.test(q)
 
-  const tasks: Promise<ContentCardData[]>[] = []
-  if (!filters?.type || filters.type === 'all' || filters.type === 'movie') {
-    tasks.push(
-      db.movie.findMany({
-        where: movieWhere,
-        take: 40,
-        orderBy: { voteCount: 'desc' },
-        include: { genres: { select: { name: true } } },
-      }).then((ms) => ms.map((m) => movieToCard(m, m.genres))),
-    )
-  }
-  if (!filters?.type || filters.type === 'all' || filters.type === 'series' || filters.type === 'anime') {
-    tasks.push(
-      db.series.findMany({
-        where: seriesWhere,
-        take: 40,
-        orderBy: { voteCount: 'desc' },
-        include: { genres: { select: { name: true } } },
-      }).then((ss) => ss.map((s) => seriesToCard(s, s.genres))),
-    )
-  }
+    const movieSelect = 'id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, trending, popular, topRated, recentlyAdded, genres:Genre!Movie_genres(name)'
+    const seriesSelect = 'id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, genres:Genre!Series_genres(name)'
 
-  const results = (await Promise.all(tasks)).flat()
-  return results
+    const tasks: Promise<ContentCardData[]>[] = []
+
+    if (!filters?.type || filters.type === 'all' || filters.type === 'movie') {
+      let mq = supabase.from('Movie').select(movieSelect).eq('status', 'published')
+      if (q && !isYear) {
+        mq = mq.or(`title.ilike.%${q}%,synopsis.ilike.%${q}%,cast.ilike.%${q}%`)
+      }
+      if (isYear) mq = mq.eq('releaseYear', Number(q))
+      if (filters?.year) mq = mq.eq('releaseYear', filters.year)
+      if (filters?.genre) mq = mq.filter('genres.slug', 'eq', filters.genre)
+      tasks.push(mq.order('voteCount', { ascending: false }).limit(40)
+        .then(({ data }) => ((data as MovieRow[]) ?? []).map(movieToCard)))
+    }
+    if (!filters?.type || filters.type === 'all' || filters.type === 'series' || filters.type === 'anime') {
+      let sq = supabase.from('Series').select(seriesSelect).eq('status', 'published')
+      if (filters?.type === 'series' || filters?.type === 'anime') sq = sq.eq('type', filters.type)
+      if (q && !isYear) {
+        sq = sq.or(`title.ilike.%${q}%,synopsis.ilike.%${q}%,cast.ilike.%${q}%`)
+      }
+      if (isYear) sq = sq.eq('releaseYear', Number(q))
+      if (filters?.year) sq = sq.eq('releaseYear', filters.year)
+      if (filters?.genre) sq = sq.filter('genres.slug', 'eq', filters.genre)
+      tasks.push(sq.order('voteCount', { ascending: false }).limit(40)
+        .then(({ data }) => ((data as SeriesRow[]) ?? []).map(seriesToCard)))
+    }
+
+    const results = (await Promise.all(tasks)).flat()
+    return results
+  } catch {
+    return []
+  }
 }
+
+// ──────────────────────────── Continue watching ────────────────────────────
 
 export async function getContinueWatching(userId: string): Promise<
   (ContentCardData & { progress: number; episodeId?: string | null })[]
 > {
-  const progress = await db.watchProgress.findMany({
-    where: { userId, progress: { lt: 95 } },
-    orderBy: { updatedAt: 'desc' },
-    take: 20,
-  })
-  const items: (ContentCardData & { progress: number; episodeId?: string | null })[] = []
-  for (const p of progress) {
-    if (p.movieId) {
-      const m = await db.movie.findUnique({
-        where: { id: p.movieId },
-        include: { genres: { select: { name: true } } },
-      })
-      if (m) items.push({ ...movieToCard(m, m.genres), progress: p.progress, episodeId: null })
-    } else if (p.seriesId) {
-      const s = await db.series.findUnique({
-        where: { id: p.seriesId },
-        include: { genres: { select: { name: true } } },
-      })
-      if (s) items.push({ ...seriesToCard(s, s.genres), progress: p.progress, episodeId: p.episodeId })
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data } = await supabase
+      .from('WatchProgress')
+      .select('id, movieId, seriesId, episodeId, contentType, progress, updatedAt')
+      .eq('userId', userId)
+      .lt('progress', 95)
+      .order('updatedAt', { ascending: false })
+      .limit(20)
+    if (!data) return []
+    const items: (ContentCardData & { progress: number; episodeId?: string | null })[] = []
+    for (const p of data as any[]) {
+      if (p.movieId) {
+        const { data: m } = await supabase
+          .from('Movie')
+          .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, trending, popular, topRated, recentlyAdded, genres:Genre!Movie_genres(name)')
+          .eq('id', p.movieId)
+          .single()
+        if (m) items.push({ ...movieToCard(m as MovieRow), progress: p.progress, episodeId: null })
+      } else if (p.seriesId) {
+        const { data: s } = await supabase
+          .from('Series')
+          .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, genres:Genre!Series_genres(name)')
+          .eq('id', p.seriesId)
+          .single()
+        if (s) items.push({ ...seriesToCard(s as SeriesRow), progress: p.progress, episodeId: p.episodeId })
+      }
+    }
+    return items
+  } catch {
+    return []
+  }
+}
+
+// ──────────────────────────── Home page aggregator ────────────────────────────
+
+export async function getHomeData() {
+  try {
+    const [
+      featuredMovies, featuredSeries,
+      trending, recentlyAddedMovies, recentlyAddedSeries,
+      popularMovies, popularSeries, popularAnime,
+      topRated, recommended, recentlyUpdated,
+    ] = await Promise.all([
+      (async () => {
+        const supabase = await createServerSupabaseClient()
+        const { data } = await supabase
+          .from('Movie')
+          .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, trending, popular, topRated, recentlyAdded, genres:Genre!Movie_genres(name)')
+          .eq('featured', true)
+          .eq('status', 'published')
+          .limit(3)
+        return (data ?? []) as MovieRow[]
+      })(),
+      (async () => {
+        const supabase = await createServerSupabaseClient()
+        const { data } = await supabase
+          .from('Series')
+          .select('id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, genres:Genre!Series_genres(name)')
+          .eq('featured', true)
+          .eq('status', 'published')
+          .limit(4)
+        return (data ?? []) as SeriesRow[]
+      })(),
+      Promise.all([
+        getMovieCards({ trending: true, limit: 20 }),
+        getSeriesCards({ trending: true, limit: 20 }),
+      ]).then(([a, b]) => [...a, ...b]),
+      getMovieCards({ recentlyAdded: true, limit: 20 }),
+      getSeriesCards({ recentlyAdded: true, limit: 20 }),
+      getMovieCards({ popular: true, limit: 20 }),
+      getSeriesCards({ type: 'series', popular: true, limit: 20 }),
+      getSeriesCards({ type: 'anime', popular: true, limit: 20 }),
+      Promise.all([
+        getMovieCards({ topRated: true, limit: 12 }),
+        getSeriesCards({ topRated: true, limit: 12 }),
+      ]).then(([a, b]) => [...a, ...b].sort((x, y) => y.rating - x.rating)),
+      Promise.all([
+        getMovieCards({ limit: 12 }),
+        getSeriesCards({ limit: 12 }),
+      ]).then(([a, b]) => [...a, ...b].sort(() => Math.random() - 0.5)),
+      Promise.all([
+        getMovieCards({ recentlyAdded: true, limit: 20 }),
+        getSeriesCards({ recentlyAdded: true, limit: 20 }),
+      ]).then(([a, b]) => [...a, ...b]),
+    ])
+
+    const heroSlides: HeroSlide[] = [
+      ...featuredMovies.map((m) => ({
+        ...movieToCard(m),
+        synopsis: m.synopsis,
+        logoUrl: m.logoUrl,
+      })),
+      ...featuredSeries.map((s) => ({
+        ...seriesToCard(s),
+        synopsis: s.synopsis,
+        logoUrl: s.logoUrl,
+      })),
+    ].slice(0, 5)
+
+    return {
+      heroSlides,
+      trending,
+      recentlyAdded: [...recentlyAddedMovies, ...recentlyAddedSeries],
+      popularMovies,
+      popularSeries,
+      popularAnime,
+      topRated,
+      recommended,
+      recentlyUpdated,
+    }
+  } catch {
+    return {
+      heroSlides: [],
+      trending: [],
+      recentlyAdded: [],
+      popularMovies: [],
+      popularSeries: [],
+      popularAnime: [],
+      topRated: [],
+      recommended: [],
+      recentlyUpdated: [],
     }
   }
-  return items
 }

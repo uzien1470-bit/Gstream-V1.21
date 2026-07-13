@@ -1,5 +1,4 @@
 
-import { db } from '@/lib/db'
 import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 
 // TMDB image CDN base — publicly accessible
@@ -875,114 +874,97 @@ function slugify(s: string) {
 }
 
 async function main() {
-  console.log('Seeding Gstream database...')
+  console.log('Seeding Gstream database (Supabase)...')
+  const supabase = createAdminSupabaseClient()
 
-  // Clean slate
-  await db.watchProgress.deleteMany()
-  await db.watchHistory.deleteMany()
-  await db.myList.deleteMany()
-  await db.featuredBanner.deleteMany()
-  await db.episodeServer.deleteMany()
-  await db.movieServer.deleteMany()
-  await db.episode.deleteMany()
-  await db.season.deleteMany()
-  await db.movie.deleteMany()
-  await db.series.deleteMany()
-  await db.streamingServer.deleteMany()
-  await db.genre.deleteMany()
-  await db.category.deleteMany()
-  await db.user.deleteMany()
+  // Clean slate (order matters for FK constraints)
+  const tables = [
+    'WatchProgress', 'WatchHistory', 'MyList', 'FeaturedBanner',
+    'EpisodeServer', 'MovieServer', 'Episode', 'Season',
+    'Movie_genres', 'Movie_categories', 'Series_genres', 'Series_categories',
+    'Movie', 'Series', 'StreamingServer', 'Genre', 'Category',
+  ]
+  for (const t of tables) {
+    await supabase.from(t).delete().neq('id', '00000000').then(() => {})
+  }
+  // User profiles (not auth.users)
+  await supabase.from('User').delete().neq('id', '00000000').then(() => {})
 
   // Genres
-  const genreMap = new Map<string, any>()
+  const genreMap = new Map<string, string>()
   for (const name of GENRES) {
-    const g = await db.genre.create({ data: { name, slug: slugify(name) } })
-    genreMap.set(name, g)
+    const { data } = await supabase.from('Genre').insert({ name, slug: slugify(name) }).select('id').single()
+    if (data) genreMap.set(name, data.id)
   }
   // Categories
-  const catMap = new Map<string, any>()
+  const catMap = new Map<string, string>()
   for (const c of CATEGORIES) {
-    const cat = await db.category.create({ data: { name: c.name, slug: c.slug, icon: c.icon } })
-    catMap.set(c.slug, cat)
+    const { data } = await supabase.from('Category').insert({ name: c.name, slug: c.slug, icon: c.icon }).select('id').single()
+    if (data) catMap.set(c.slug, data.id)
   }
   // Servers
-  const serverMap = new Map<string, any>()
+  const serverMap = new Map<string, string>()
   for (const s of SERVERS) {
-    const srv = await db.streamingServer.create({ data: { name: s.name, slug: s.slug, priority: s.priority, status: s.status } })
-    serverMap.set(s.name, srv)
+    const { data } = await supabase.from('StreamingServer').insert({ name: s.name, slug: s.slug, priority: s.priority, status: s.status }).select('id').single()
+    if (data) serverMap.set(s.name, data.id)
   }
 
   // Admin + demo user — created via Supabase Auth (service-role).
-  // The auth trigger (supabase/setup.sql) auto-creates a public."User" profile
-  // row; we then promote the admin.
-  const admin = createAdminSupabaseClient()
-  let adminUser: { id: string } | null = null
-  let demoUser: { id: string } | null = null
+  // The auth trigger auto-creates a public."User" profile row; we then promote admin.
+  let adminUserId: string | null = null
+  let demoUserId: string | null = null
   try {
-    const { data: a } = await admin.auth.admin.createUser({
+    const { data: a } = await supabase.auth.admin.createUser({
       email: 'admin@gstream.com',
       password: 'admin123',
       email_confirm: true,
       user_metadata: { name: 'Administrator' },
     })
-    adminUser = a.user ? { id: a.user.id } : null
+    adminUserId = a.user?.id ?? null
   } catch (e) { console.warn('admin create skipped:', (e as Error).message) }
   try {
-    const { data: u } = await admin.auth.admin.createUser({
+    const { data: u } = await supabase.auth.admin.createUser({
       email: 'user@gstream.com',
       password: 'user123',
       email_confirm: true,
       user_metadata: { name: 'Demo Viewer' },
     })
-    demoUser = u.user ? { id: u.user.id } : null
+    demoUserId = u.user?.id ?? null
   } catch (e) { console.warn('user create skipped:', (e as Error).message) }
 
   // Promote admin role in the profile table (trigger created it as 'user')
-  if (adminUser) {
-    await db.user.update({ where: { id: adminUser.id }, data: { role: 'admin' } }).catch(() => {})
+  if (adminUserId) {
+    await supabase.from('User').update({ role: 'admin' }).eq('id', adminUserId)
   }
-  console.log('Created admin:', adminUser?.id ? 'admin@gstream.com' : '(skipped)', '| demo user:', demoUser?.id ? 'user@gstream.com' : '(skipped)')
+  console.log('Created admin:', adminUserId ? 'admin@gstream.com' : '(skipped)', '| demo user:', demoUserId ? 'user@gstream.com' : '(skipped)')
 
   // Movies
   for (const m of MOVIES) {
-    const created = await db.movie.create({
-      data: {
-        title: m.title,
-        slug: m.slug,
-        synopsis: m.synopsis,
-        posterUrl: m.poster,
-        backdropUrl: m.backdrop,
-        logoUrl: m.logo ?? null,
-        releaseYear: m.year,
-        runtime: m.runtime,
-        rating: m.rating,
-        voteCount: m.votes,
-        trailerUrl: m.trailer ?? null,
-        type: 'movie',
-        featured: m.flags?.featured ?? false,
-        trending: m.flags?.trending ?? false,
-        popular: m.flags?.popular ?? false,
-        topRated: m.flags?.topRated ?? false,
-        recentlyAdded: m.flags?.recentlyAdded ?? true,
-        recentlyUpdated: true,
-        status: 'published',
-        cast: JSON.stringify(m.cast),
-        genres: { connect: m.genres.map((n) => ({ id: genreMap.get(n).id })) },
-        categories: { connect: m.categories.map((s) => ({ id: catMap.get(s).id })) },
-      },
-    })
+    const { data: created } = await supabase.from('Movie').insert({
+      title: m.title, slug: m.slug, synopsis: m.synopsis,
+      posterUrl: m.poster, backdropUrl: m.backdrop, logoUrl: m.logo ?? null,
+      releaseYear: m.year, runtime: m.runtime, rating: m.rating, voteCount: m.votes,
+      trailerUrl: m.trailer ?? null, type: 'movie',
+      featured: m.flags?.featured ?? false, trending: m.flags?.trending ?? false,
+      popular: m.flags?.popular ?? false, topRated: m.flags?.topRated ?? false,
+      recentlyAdded: m.flags?.recentlyAdded ?? true, recentlyUpdated: true,
+      status: 'published', cast: JSON.stringify(m.cast),
+    }).select('id').single()
+    if (!created) continue
+
+    // Genre junction
+    const gRows = m.genres.map((n) => genreMap.get(n)).filter(Boolean).map((gid) => ({ movieId: created.id, genreId: gid }))
+    if (gRows.length) await supabase.from('Movie_genres').insert(gRows)
+    // Category junction
+    const cRows = m.categories.map((s) => catMap.get(s)).filter(Boolean).map((cid) => ({ movieId: created.id, categoryId: cid }))
+    if (cRows.length) await supabase.from('Movie_categories').insert(cRows)
+    // Servers
     for (const sv of m.servers) {
-      const srv = serverMap.get(sv.name)
-      if (!srv) continue
-      await db.movieServer.create({
-        data: {
-          movieId: created.id,
-          serverId: srv.id,
-          embedUrl: sv.embedUrl,
-          quality: sv.quality ?? 'Auto',
-          priority: sv.priority ?? 0,
-          status: 'active',
-        },
+      const sid = serverMap.get(sv.name)
+      if (!sid) continue
+      await supabase.from('MovieServer').insert({
+        movieId: created.id, serverId: sid, embedUrl: sv.embedUrl,
+        quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
       })
     }
   }
@@ -992,66 +974,47 @@ async function main() {
   let seriesCount = 0
   for (const s of [...SERIES, ...ANIME]) {
     const isAnime = ANIME.includes(s)
-    const created = await db.series.create({
-      data: {
-        title: s.title,
-        slug: s.slug,
-        synopsis: s.synopsis,
-        posterUrl: s.poster,
-        backdropUrl: s.backdrop,
-        logoUrl: s.logo ?? null,
-        releaseYear: s.year,
-        rating: s.rating,
-        voteCount: s.votes,
-        trailerUrl: s.trailer ?? null,
-        type: isAnime ? 'anime' : 'series',
-        featured: s.flags?.featured ?? false,
-        trending: s.flags?.trending ?? false,
-        popular: s.flags?.popular ?? false,
-        topRated: s.flags?.topRated ?? false,
-        recentlyAdded: s.flags?.recentlyAdded ?? true,
-        recentlyUpdated: true,
-        status: 'published',
-        cast: JSON.stringify(s.cast),
-        genres: { connect: s.genres.map((n) => ({ id: genreMap.get(n).id })) },
-        categories: { connect: s.categories.map((c) => ({ id: catMap.get(c).id })) },
-      },
-    })
+    const { data: created } = await supabase.from('Series').insert({
+      title: s.title, slug: s.slug, synopsis: s.synopsis,
+      posterUrl: s.poster, backdropUrl: s.backdrop, logoUrl: s.logo ?? null,
+      releaseYear: s.year, rating: s.rating, voteCount: s.votes,
+      trailerUrl: s.trailer ?? null, type: isAnime ? 'anime' : 'series',
+      featured: s.flags?.featured ?? false, trending: s.flags?.trending ?? false,
+      popular: s.flags?.popular ?? false, topRated: s.flags?.topRated ?? false,
+      recentlyAdded: s.flags?.recentlyAdded ?? true, recentlyUpdated: true,
+      status: 'published', cast: JSON.stringify(s.cast),
+    }).select('id').single()
+    if (!created) continue
+
+    // Genre junction
+    const gRows = s.genres.map((n) => genreMap.get(n)).filter(Boolean).map((gid) => ({ seriesId: created.id, genreId: gid }))
+    if (gRows.length) await supabase.from('Series_genres').insert(gRows)
+    // Category junction
+    const cRows = s.categories.map((c) => catMap.get(c)).filter(Boolean).map((cid) => ({ seriesId: created.id, categoryId: cid }))
+    if (cRows.length) await supabase.from('Series_categories').insert(cRows)
+
     for (const season of s.seasons) {
-      const createdSeason = await db.season.create({
-        data: {
-          seriesId: created.id,
-          seasonNumber: season.seasonNumber,
-          title: season.title,
-          description: season.description ?? null,
-          posterUrl: season.poster ?? null,
-          episodeCount: season.episodes.length,
-        },
-      })
-      for (const ep of season.episodes) {
-        const createdEp = await db.episode.create({
-          data: {
-            seasonId: createdSeason.id,
-            episodeNumber: season.episodes.indexOf(ep) + 1,
-            title: ep.title,
-            description: ep.description,
-            thumbnailUrl: ep.thumbnail ?? created.backdropUrl,
-            runtime: ep.runtime,
-            airDate: ep.airDate ?? null,
-          },
-        })
+      const { data: createdSeason } = await supabase.from('Season').insert({
+        seriesId: created.id, seasonNumber: season.seasonNumber, title: season.title,
+        description: season.description ?? null, posterUrl: season.poster ?? null,
+        episodeCount: season.episodes.length,
+      }).select('id').single()
+      if (!createdSeason) continue
+
+      for (const [epIdx, ep] of season.episodes.entries()) {
+        const { data: createdEp } = await supabase.from('Episode').insert({
+          seasonId: createdSeason.id, episodeNumber: epIdx + 1, title: ep.title,
+          description: ep.description, thumbnailUrl: ep.thumbnail ?? created.backdropUrl,
+          runtime: ep.runtime, airDate: ep.airDate ?? null,
+        }).select('id').single()
+        if (!createdEp) continue
+
         for (const sv of ep.servers) {
-          const srv = serverMap.get(sv.name)
-          if (!srv) continue
-          await db.episodeServer.create({
-            data: {
-              episodeId: createdEp.id,
-              serverId: srv.id,
-              embedUrl: sv.embedUrl,
-              quality: sv.quality ?? 'Auto',
-              priority: sv.priority ?? 0,
-              status: 'active',
-            },
+          const sid = serverMap.get(sv.name)
+          if (!sid) continue
+          await supabase.from('EpisodeServer').insert({
+            episodeId: createdEp.id, serverId: sid, embedUrl: sv.embedUrl,
+            quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
           })
         }
       }
@@ -1061,33 +1024,19 @@ async function main() {
   console.log(`Seeded ${seriesCount} series/anime`)
 
   // Featured banners — derive from featured content
-  const featuredMovies = await db.movie.findMany({ where: { featured: true }, take: 3 })
-  const featuredSeries = await db.series.findMany({ where: { featured: true }, take: 3 })
+  const { data: featuredMovies } = await supabase.from('Movie').select('id, title, synopsis, backdropUrl, logoUrl').eq('featured', true).limit(3)
+  const { data: featuredSeries } = await supabase.from('Series').select('id, title, synopsis, backdropUrl, logoUrl').eq('featured', true).limit(3)
   let order = 0
-  for (const fm of featuredMovies.slice(0, 2)) {
-    await db.featuredBanner.create({
-      data: {
-        title: fm.title,
-        description: fm.synopsis.slice(0, 180) + '...',
-        imageUrl: fm.backdropUrl,
-        logoUrl: fm.logoUrl,
-        order: order++,
-        active: true,
-        movieId: fm.id,
-      },
+  for (const fm of (featuredMovies ?? []).slice(0, 2)) {
+    await supabase.from('FeaturedBanner').insert({
+      title: fm.title, description: (fm.synopsis ?? '').slice(0, 180) + '...',
+      imageUrl: fm.backdropUrl, logoUrl: fm.logoUrl, order: order++, active: true, movieId: fm.id,
     })
   }
-  for (const fs of featuredSeries.slice(0, 2)) {
-    await db.featuredBanner.create({
-      data: {
-        title: fs.title,
-        description: fs.synopsis.slice(0, 180) + '...',
-        imageUrl: fs.backdropUrl,
-        logoUrl: fs.logoUrl,
-        order: order++,
-        active: true,
-        seriesId: fs.id,
-      },
+  for (const fs of (featuredSeries ?? []).slice(0, 2)) {
+    await supabase.from('FeaturedBanner').insert({
+      title: fs.title, description: (fs.synopsis ?? '').slice(0, 180) + '...',
+      imageUrl: fs.backdropUrl, logoUrl: fs.logoUrl, order: order++, active: true, seriesId: fs.id,
     })
   }
 
@@ -1098,11 +1047,7 @@ async function main() {
   console.log('──────────────────────────────────────')
 }
 
-main()
-  .catch((e) => {
-    console.error(e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await db.$disconnect()
-  })
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

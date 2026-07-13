@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { db } from '@/lib/db'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -30,11 +29,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Fetch profile to check status
-  const profile = await db.user.findUnique({ where: { id: data.user.id } })
+  const { data: profile } = await supabase
+    .from('User')
+    .select('id, email, name, role, status, avatarUrl')
+    .eq('id', data.user.id)
+    .single()
   if (!profile) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   }
-  if (profile.status === 'suspended') {
+  if ((profile as any).status === 'suspended') {
     await supabase.auth.signOut()
     return NextResponse.json(
       { error: 'Account suspended. Contact support.' },
@@ -42,13 +45,14 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const p = profile as any
   return NextResponse.json({
     user: {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      role: profile.role,
-      avatarUrl: profile.avatarUrl,
+      id: p.id,
+      email: p.email,
+      name: p.name,
+      role: p.role,
+      avatarUrl: p.avatarUrl,
     },
   })
 }

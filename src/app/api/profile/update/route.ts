@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { z } from 'zod'
@@ -10,32 +9,66 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const user = await getSessionUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-  const body = await req.json().catch(() => null)
-  const parsed = schema.safeParse(body)
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+    const body = await req.json().catch(() => null)
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+    }
 
-  // Sync name to Supabase Auth user metadata too
-  const supabase = await createServerSupabaseClient()
-  await supabase.auth.updateUser({ data: { name: parsed.data.name } })
+    try {
+      const supabase = await createServerSupabaseClient()
 
-  const updated = await db.user.update({
-    where: { id: user.id },
-    data: {
-      name: parsed.data.name,
-      ...(parsed.data.avatarUrl !== undefined ? { avatarUrl: parsed.data.avatarUrl } : {}),
-    },
-  })
+      // Sync name to Supabase Auth user metadata too (best-effort)
+      await supabase.auth.updateUser({ data: { name: parsed.data.name } })
 
-  return NextResponse.json({
-    user: {
-      id: updated.id,
-      email: updated.email,
-      name: updated.name,
-      role: updated.role,
-      avatarUrl: updated.avatarUrl,
-    },
-  })
+      const update: Record<string, unknown> = { name: parsed.data.name }
+      if (parsed.data.avatarUrl !== undefined) {
+        update.avatarUrl = parsed.data.avatarUrl
+      }
+
+      const { data: updated, error } = await supabase
+        .from('User')
+        .update(update)
+        .eq('id', user.id)
+        .select('id, email, name, role, avatarUrl')
+        .single()
+
+      if (error || !updated) {
+        return NextResponse.json(
+          { error: 'Failed to update profile' },
+          { status: 500 },
+        )
+      }
+
+      const u = updated as {
+        id: string
+        email: string
+        name: string | null
+        role: string
+        avatarUrl: string | null
+      }
+      return NextResponse.json({
+        user: {
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          avatarUrl: u.avatarUrl,
+        },
+      })
+    } catch {
+      return NextResponse.json(
+        { error: 'Failed to update profile' },
+        { status: 500 },
+      )
+    }
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 }

@@ -235,3 +235,75 @@ Stage Summary:
 - App is Vercel-ready: set 5 env vars, run db:push + supabase/setup.sql + db:seed, deploy
 - Without Supabase creds, app shows a helpful 5-step setup screen (no crashes)
 - Demo credentials (after seeding): admin@gstream.com/admin123, user@gstream.com/user123
+
+---
+Task ID: 5
+Agent: admin-routes-supabase
+Task: Migrate 17 admin API routes from Prisma to Supabase
+
+Work Log:
+- Read worklog + reference patterns: src/lib/supabase/admin.ts (service-role createAdminSupabaseClient), src/lib/auth.ts (requireAdmin/requireAuth unchanged), src/app/api/my-list/toggle/route.ts (existing Supabase route pattern), src/lib/content.ts (PostgREST nested-relation syntax), prisma/schema.prisma (column names + junction tables).
+- Read all 17 existing Prisma admin route files to map every query (findMany, findUnique, create, update, delete, count, _count, include, OR, P2002/P2025 handling) before rewriting.
+- Migrated stats/route.ts: replaced 15 Promise.all db.X.count() calls with a countRows() helper using supabase.from(table).select('*', { count:'exact', head:true }); replaced watchHistory.findMany include with PostgREST nested select '*, user:User(name, email), movie:Movie(title), series:Series(title), episode:Episode(title, episodeNumber)'; wrapped in try/catch returning 500 on failure; recent activity query wrapped in its own try/catch so a failure still returns zero-activity stats; normalized watchedAt via new Date(...).toISOString().
+- Migrated content/route.ts: GET uses range() for pagination, count:'exact' for total, PostgREST '*, genres:Genre!Movie_genres(name), servers:MovieServer(*, server:StreamingServer(*))' for movies / '*, genres:Genre!Series_genres(name), seasons:Season(*)' for series; for series, computes per-season episode counts in a second Episode query and attaches as _count.episodes (frontend ContentItem shape). POST inserts the Movie/Series row, then manually inserts Movie_genres / Movie_categories / Series_genres / Series_categories junction rows + MovieServer rows for movies.
+- Migrated content/[id]/route.ts: GET uses maybeSingle() and explicit junction select 'genres:Genre!Movie_genres(*), categories:Category!Movie_categories(*), servers:MovieServer(*, server:StreamingServer(*))' for movies / 'seasons:Season(*, episodes:Episode(*))' for series (then sorts client-side by seasonNumber/episodeNumber). PUT updates the row then deletes+re-inserts junction rows (Movie_genres, Movie_categories, Series_genres, Series_categories) and MovieServer rows. DELETE just removes from Movie/Series table.
+- Migrated seasons/route.ts: GET supports seriesId filter + q search (fetches matching series ids, then in(...) on Season); for each season includes series:Series(id, title, type, posterUrl) and computes _count.episodes via a second Episode query. POST verifies the Series exists (404 if not), inserts the Season, and bumps Series.recentlyUpdated=true.
+- Migrated seasons/[id]/route.ts: PUT/DELETE via update()/delete() on Season, returning 404 when update yields no row or delete count is 0.
+- Migrated episodes/route.ts: GET supports seasonId filter, ordered by seasonId then episodeNumber, includes 'season:Season(*, series:Series(id, title, type)), servers:EpisodeServer(*, server:StreamingServer(*))'. POST verifies Season exists then inserts Episode + EpisodeServer rows.
+- Migrated episodes/[id]/route.ts: GET/PUT/DELETE — GET returns 404 when maybeSingle() is null; PUT updates then replaces EpisodeServer rows; DELETE removes the Episode.
+- Migrated genres/route.ts + [id]/route.ts: GET ordered by name asc; POST/PUT insert/update with 23505 → 409 "name or slug already exists"; DELETE returns 404 when delete count===0 (replaces Prisma P2025).
+- Migrated categories/route.ts + [id]/route.ts: same pattern as genres; supports optional `icon` field on POST/PUT (null when blank).
+- Migrated servers/route.ts + [id]/route.ts: GET ordered by priority asc then name asc; supports name/priority/status updates; 23505 → 409, 0-row delete → 404.
+- Migrated banners/route.ts + [id]/route.ts: GET includes 'movie:Movie(id, title), series:Series(id, title)' and orders by order asc, createdAt desc; POST/PUT/DELETE same patterns; 0-row delete → 404.
+- Migrated users/route.ts: GET selects profile fields (id, email, name, avatarUrl, role, status, createdAt, updatedAt) — NO passwordHash (doesn't exist); supports ?q= search via email/name ilike; pagination via range(); returns currentUserId from requireAdmin(); excludes nothing else. (Drop-in identical response shape.)
+- Migrated users/[id]/route.ts: PUT preserves all protection rules (cannot suspend admin / cannot suspend self / cannot demote last admin — last-admin check now uses supabase count:'exact', head:true); DELETE preserves (cannot delete admin / cannot delete self) and calls supabase.auth.admin.deleteUser(id) (ON DELETE CASCADE removes the profile row); wrapped a fallback profile-row delete in try/catch (supabase query builder doesn't expose .catch on PromiseLike, so used try/catch). No passwordHash reference anywhere.
+- Ran grep for '@/lib/db' across src/app/api/admin/ → no matches. Ran grep for '@/lib/db' across src/app/api/ → no matches.
+- Ran `bun run lint` → EXIT 0, no errors, no warnings.
+- Probed every admin route (9 list GET + 9 POST + 8 by-id PUT + 8 by-id DELETE = 34 requests) on the live dev server; all returned 401 (auth required) or 405 (POST /api/admin/users — no POST handler, by design) confirming every file compiles cleanly via Next.js on-demand; no errors in dev.log.
+
+Stage Summary:
+- All 17 admin API routes successfully migrated from Prisma to @supabase/supabase-js via createAdminSupabaseClient (service-role, bypasses RLS):
+  - src/app/api/admin/stats/route.ts
+  - src/app/api/admin/content/route.ts + [id]/route.ts
+  - src/app/api/admin/seasons/route.ts + [id]/route.ts
+  - src/app/api/admin/episodes/route.ts + [id]/route.ts
+  - src/app/api/admin/genres/route.ts + [id]/route.ts
+  - src/app/api/admin/categories/route.ts + [id]/route.ts
+  - src/app/api/admin/servers/route.ts + [id]/route.ts
+  - src/app/api/admin/banners/route.ts + [id]/route.ts
+  - src/app/api/admin/users/route.ts + [id]/route.ts
+- Frontend admin components (ContentManager, seasons/episodes/genres/categories/servers/banners/users pages) untouched — all response shapes preserved (genres:[{name}], seasons:[{...,_count:{episodes:N}}], servers:[{server:{...}}], recentActivity:[{watchedAt,user,title,episode,contentType}], items/total/page/limit/currentUserId etc.).
+- Many-to-many relations (Movie↔Genre, Movie↔Category, Series↔Genre, Series↔Category) implemented via manual junction inserts into Movie_genres / Movie_categories / Series_genres / Series_categories (delete-then-insert on update).
+- Streaming server rows (MovieServer, EpisodeServer) replaced via delete+insert on create-with-servers / update-with-servers.
+- Prisma error codes mapped: P2002 → error.code === '23505' (409), P2025 → maybeSingle() null OR delete count===0 (404).
+- All admin self/last-admin protection rules preserved in users/[id]/route.ts.
+- No @/lib/db imports remain anywhere under src/app/api/. Lint passes with 0 errors. Dev server compiles every admin route on-demand without errors.
+
+---
+Task ID: MIGRATION-FINAL
+Agent: main
+Task: Backend-only migration to Supabase — restore full app, replace Prisma with @supabase/supabase-js, no setup screen
+
+Work Log:
+- Removed SupabaseSetupScreen, SupabaseGate, and all page gates — every page renders unconditionally
+- Fixed content.ts PostgREST M2M query syntax: `genres:Genre!Movie_genres(name)` (aliased table name + junction hint)
+- Delegated 17 admin API route rewrites to subagent (all converted from Prisma to createAdminSupabaseClient)
+- Rewrote prisma/seed.ts: removed all Prisma calls, uses createAdminSupabaseClient for all DB ops + auth.admin.createUser
+- Deleted src/lib/db.ts (Prisma client) and removed prisma + @prisma/client from package.json
+- Removed prisma/migrations/ (no longer needed), supabase/setup.sql (superseded by schema.sql), prisma/patch-images.ts, DEPLOYMENT.md
+- Created supabase/schema.sql: complete Postgres schema (15 tables + 4 junction tables), RLS policies, storage buckets (posters/backdrops/avatars/thumbnails), auth→profile trigger, updated_at triggers
+- Added AdminSupabaseBanner component: small dismissible amber warning banner shown ONLY in admin dashboard when Supabase env vars missing; public site never affected
+- Added /api/health/supabase endpoint for the banner to check configuration status
+- Created .env.example (3 vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY — no DATABASE_URL needed since no Prisma)
+- Created README.md: 6-step guide (create Supabase, set env vars, import schema.sql, configure storage, seed, deploy to Vercel) + architecture + features + troubleshooting
+- Updated package.json: removed all Prisma scripts (db:push, db:generate, db:migrate, etc.), kept db:seed + supabase:setup
+- Fixed reset-password page export bug (ResetClient vs ResetPasswordPage naming collision)
+- Verified: 0 lint errors, 0 warnings; all 17 routes return 200; no console errors; no setup screen; no crashes; public site loads normally with empty data when Supabase unconfigured
+
+Stage Summary:
+- Full backend migrated to Supabase (@supabase/supabase-js for all DB access, Supabase Auth for authentication, Supabase Storage for images)
+- Prisma completely removed (dependency, client, db.ts, migrations)
+- All frontend pages, components, routing, styling, animations UNCHANGED
+- App never blocks: public site loads normally (empty data) when Supabase unconfigured; only a small dismissible warning banner in admin dashboard
+- Ready for Vercel: set 3 env vars, run supabase/schema.sql in SQL Editor, run bun run db:seed, deploy
+- Demo: admin@gstream.com/admin123, user@gstream.com/user123

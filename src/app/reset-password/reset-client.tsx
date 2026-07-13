@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
-function ResetClient() {
+function ResetForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [password, setPassword] = useState('')
@@ -101,10 +101,10 @@ function ResetClient() {
   )
 }
 
-export default function ResetPasswordPage() {
+export function ResetClient() {
   return (
     <Suspense fallback={<div className="pt-32 text-center text-muted-foreground">Loading...</div>}>
-      <ResetClient />
+      <ResetForm />
     </Suspense>
   )
 }

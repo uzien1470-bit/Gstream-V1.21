@@ -7,6 +7,7 @@ import {
   Server, Users, Activity, Bookmark, History, Loader2, UserCheck, UserX,
 } from 'lucide-react'
 import { AdminShell } from '@/components/admin/admin-shell'
+import { AdminSupabaseBanner } from '@/components/admin/admin-supabase-banner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -55,6 +56,8 @@ export default function AdminDashboard() {
         </h1>
         <p className="text-sm text-muted-foreground">Overview of your streaming platform.</p>
       </div>
+
+      <AdminSupabaseBanner />
 
       {/* Stat cards */}
       {!stats ? (

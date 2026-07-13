@@ -1,9 +1,6 @@
 import { notFound } from 'next/navigation'
-import { db } from '@/lib/db'
 import { getDetail, getRecommendations } from '@/lib/content'
 import { WatchClient } from '@/components/watch/watch-client'
-import { SupabaseSetupScreen } from '@/components/supabase-setup-screen'
-import { isSupabaseConfigured } from '@/lib/supabase/configured'
 import type { ContentType } from '@/lib/types'
 
 export const metadata = { title: 'Watch — Gstream' }
@@ -15,7 +12,6 @@ export default async function WatchPage({
   params: Promise<{ type: string; id: string }>
   searchParams: Promise<{ s?: string; e?: string }>
 }) {
-  if (!isSupabaseConfigured()) return <SupabaseSetupScreen />
   const { type: typeParam, id } = await params
   const { s, e } = await searchParams
 

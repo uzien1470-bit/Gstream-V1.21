@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/auth'
 
 function slugify(name: string): string {
@@ -12,10 +12,20 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const items = await db.streamingServer.findMany({
-    orderBy: [{ priority: 'asc' }, { name: 'asc' }],
-  })
-  return NextResponse.json({ items })
+  try {
+    const supabase = createAdminSupabaseClient()
+    const { data: items, error } = await supabase
+      .from('StreamingServer')
+      .select('*')
+      .order('priority', { ascending: true })
+      .order('name', { ascending: true })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ items: items ?? [] })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -33,13 +43,25 @@ export async function POST(req: NextRequest) {
   const slug = slugify(name)
   const priority = Number.isFinite(Number(body.priority)) ? Number(body.priority) : 0
   const status = body.status === 'inactive' ? 'inactive' : 'active'
+
   try {
-    const item = await db.streamingServer.create({ data: { name, slug, priority, status } })
+    const supabase = createAdminSupabaseClient()
+    const { data: item, error } = await supabase
+      .from('StreamingServer')
+      .insert({ name, slug, priority, status })
+      .select()
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'A server with this name or slug already exists' },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json({ item })
   } catch (err: any) {
-    if (err?.code === 'P2002') {
-      return NextResponse.json({ error: 'A server with this name or slug already exists' }, { status: 409 })
-    }
-    throw err
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
   }
 }

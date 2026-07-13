@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/auth'
 
 export async function GET() {
@@ -8,14 +8,20 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const items = await db.featuredBanner.findMany({
-    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-    include: {
-      movie: { select: { id: true, title: true } },
-      series: { select: { id: true, title: true } },
-    },
-  })
-  return NextResponse.json({ items })
+  try {
+    const supabase = createAdminSupabaseClient()
+    const { data: items, error } = await supabase
+      .from('FeaturedBanner')
+      .select('*, movie:Movie(id, title), series:Series(id, title)')
+      .order('order', { ascending: true })
+      .order('createdAt', { ascending: false })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ items: items ?? [] })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -36,7 +42,7 @@ export async function POST(req: NextRequest) {
   const movieId = typeof body.movieId === 'string' && body.movieId ? body.movieId : null
   const seriesId = typeof body.seriesId === 'string' && body.seriesId ? body.seriesId : null
 
-  const data: any = {
+  const row = {
     title: body.title.trim(),
     description: typeof body.description === 'string' ? body.description : '',
     imageUrl: body.imageUrl.trim(),
@@ -47,6 +53,19 @@ export async function POST(req: NextRequest) {
     movieId,
     seriesId,
   }
-  const item = await db.featuredBanner.create({ data })
-  return NextResponse.json({ item })
+
+  try {
+    const supabase = createAdminSupabaseClient()
+    const { data: item, error } = await supabase
+      .from('FeaturedBanner')
+      .insert(row)
+      .select()
+      .single()
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ item })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
+  }
 }

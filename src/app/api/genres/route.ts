@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function GET() {
-  const genres = await db.genre.findMany({ orderBy: { name: 'asc' }, select: { name: true, slug: true } })
-  return NextResponse.json({ genres })
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('Genre')
+      .select('name, slug')
+      .order('name', { ascending: true })
+    if (error || !data) {
+      return NextResponse.json({ genres: [] })
+    }
+    return NextResponse.json({ genres: data as { name: string; slug: string }[] })
+  } catch {
+    return NextResponse.json({ genres: [] })
+  }
 }

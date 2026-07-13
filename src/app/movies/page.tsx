@@ -1,18 +1,14 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { PageHeader } from '@/components/layout/page-header'
 import { ListingGrid } from '@/components/content/listing-grid'
-import { SupabaseSetupScreen } from '@/components/supabase-setup-screen'
-import { isSupabaseConfigured } from '@/lib/supabase/configured'
-import { getMovieCards } from '@/lib/content'
-import { db } from '@/lib/db'
+import { getMovieCards, getGenres } from '@/lib/content'
 
 export const metadata = { title: 'Movies — Gstream' }
 
 export default async function MoviesPage() {
-  if (!isSupabaseConfigured()) return <SupabaseSetupScreen />
   const [movies, genres] = await Promise.all([
     getMovieCards({ limit: 100 }),
-    db.genre.findMany({ orderBy: { name: 'asc' }, select: { name: true, slug: true } }),
+    getGenres(),
   ])
 
   return (

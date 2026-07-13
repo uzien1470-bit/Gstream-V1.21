@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/auth'
 
 function slugify(name: string): string {
@@ -23,17 +23,30 @@ export async function PUT(
   const name = body.name.trim()
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   const slug = slugify(name)
+
   try {
-    const item = await db.genre.update({ where: { id }, data: { name, slug } })
-    return NextResponse.json({ item })
-  } catch (err: any) {
-    if (err?.code === 'P2002') {
-      return NextResponse.json({ error: 'A genre with this name or slug already exists' }, { status: 409 })
+    const supabase = createAdminSupabaseClient()
+    const { data: item, error } = await supabase
+      .from('Genre')
+      .update({ name, slug })
+      .eq('id', id)
+      .select()
+      .maybeSingle()
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'A genre with this name or slug already exists' },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    if (err?.code === 'P2025') {
+    if (!item) {
       return NextResponse.json({ error: 'Genre not found' }, { status: 404 })
     }
-    throw err
+    return NextResponse.json({ item })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
   }
 }
 
@@ -47,13 +60,21 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
+
   try {
-    await db.genre.delete({ where: { id } })
-    return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
+    const supabase = createAdminSupabaseClient()
+    const { error, count } = await supabase
+      .from('Genre')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    if (count === 0) {
       return NextResponse.json({ error: 'Genre not found' }, { status: 404 })
     }
-    throw err
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? 'Server error' }, { status: 500 })
   }
 }
