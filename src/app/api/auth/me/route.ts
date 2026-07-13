@@ -6,16 +6,5 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ user: null }, { status: 200 })
   }
-  if (user.status === 'suspended') {
-    return NextResponse.json({ user: null, error: 'suspended' }, { status: 200 })
-  }
-  return NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      avatarUrl: user.avatarUrl,
-    },
-  })
+  return NextResponse.json({ user })
 }

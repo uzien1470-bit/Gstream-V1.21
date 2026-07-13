@@ -1,6 +1,6 @@
- 
+
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/auth'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 
 // TMDB image CDN base — publicly accessible
 const IMG = (path: string) => `https://image.tmdb.org/t/p/original${path}`
@@ -891,8 +891,6 @@ async function main() {
   await db.streamingServer.deleteMany()
   await db.genre.deleteMany()
   await db.category.deleteMany()
-  await db.passwordToken.deleteMany()
-  await db.session.deleteMany()
   await db.user.deleteMany()
 
   // Genres
@@ -914,16 +912,36 @@ async function main() {
     serverMap.set(s.name, srv)
   }
 
-  // Admin + demo user
-  const adminPass = await hashPassword('admin123')
-  const admin = await db.user.create({
-    data: { email: 'admin@gstream.com', name: 'Administrator', passwordHash: adminPass, role: 'admin', status: 'active' },
-  })
-  const userPass = await hashPassword('user123')
-  const demoUser = await db.user.create({
-    data: { email: 'user@gstream.com', name: 'Demo Viewer', passwordHash: userPass, role: 'user', status: 'active' },
-  })
-  console.log('Created admin:', admin.email, '| demo user:', demoUser.email)
+  // Admin + demo user — created via Supabase Auth (service-role).
+  // The auth trigger (supabase/setup.sql) auto-creates a public."User" profile
+  // row; we then promote the admin.
+  const admin = createAdminSupabaseClient()
+  let adminUser: { id: string } | null = null
+  let demoUser: { id: string } | null = null
+  try {
+    const { data: a } = await admin.auth.admin.createUser({
+      email: 'admin@gstream.com',
+      password: 'admin123',
+      email_confirm: true,
+      user_metadata: { name: 'Administrator' },
+    })
+    adminUser = a.user ? { id: a.user.id } : null
+  } catch (e) { console.warn('admin create skipped:', (e as Error).message) }
+  try {
+    const { data: u } = await admin.auth.admin.createUser({
+      email: 'user@gstream.com',
+      password: 'user123',
+      email_confirm: true,
+      user_metadata: { name: 'Demo Viewer' },
+    })
+    demoUser = u.user ? { id: u.user.id } : null
+  } catch (e) { console.warn('user create skipped:', (e as Error).message) }
+
+  // Promote admin role in the profile table (trigger created it as 'user')
+  if (adminUser) {
+    await db.user.update({ where: { id: adminUser.id }, data: { role: 'admin' } }).catch(() => {})
+  }
+  console.log('Created admin:', adminUser?.id ? 'admin@gstream.com' : '(skipped)', '| demo user:', demoUser?.id ? 'user@gstream.com' : '(skipped)')
 
   // Movies
   for (const m of MOVIES) {

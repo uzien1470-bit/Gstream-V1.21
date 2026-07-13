@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { db } from '@/lib/db'
-import { SESSION_COOKIE, destroySession } from '@/lib/auth'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function POST() {
-  const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE)?.value
-  if (token) {
-    await destroySession(token)
-    cookieStore.delete(SESSION_COOKIE)
-  }
+  const supabase = await createServerSupabaseClient()
+  await supabase.auth.signOut()
   return NextResponse.json({ ok: true })
 }

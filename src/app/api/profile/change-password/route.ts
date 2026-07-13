@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { getSessionUser, verifyPassword, hashPassword } from '@/lib/auth'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { getSessionUser } from '@/lib/auth'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -16,16 +16,24 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
 
-  const full = await db.user.findUnique({ where: { id: user.id } })
-  if (!full) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const supabase = await createServerSupabaseClient()
 
-  const ok = await verifyPassword(parsed.data.currentPassword, full.passwordHash)
-  if (!ok) return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
+  // Verify the current password by re-signing in
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: parsed.data.currentPassword,
+  })
+  if (verifyError) {
+    return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
+  }
 
-  const passwordHash = await hashPassword(parsed.data.newPassword)
-  await db.user.update({ where: { id: user.id }, data: { passwordHash } })
-  // invalidate other sessions
-  await db.session.deleteMany({ where: { userId: user.id } })
+  // Update to the new password
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: parsed.data.newPassword,
+  })
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 400 })
+  }
 
   return NextResponse.json({ ok: true })
 }

@@ -2,6 +2,8 @@ import { AppShell } from '@/components/layout/app-shell'
 import { HeroBanner, type HeroSlide } from '@/components/content/hero-banner'
 import { ContentRow } from '@/components/content/content-row'
 import { ContinueWatchingRow } from '@/components/content/continue-watching-row'
+import { SupabaseSetupScreen } from '@/components/supabase-setup-screen'
+import { isSupabaseConfigured } from '@/lib/supabase/configured'
 import { getMovieCards, getSeriesCards } from '@/lib/content'
 import { db } from '@/lib/db'
 
@@ -90,6 +92,9 @@ async function getHomeData() {
 }
 
 export default async function HomePage() {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseSetupScreen />
+  }
   const data = await getHomeData()
 
   return (

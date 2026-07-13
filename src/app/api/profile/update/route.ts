@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -15,6 +16,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+
+  // Sync name to Supabase Auth user metadata too
+  const supabase = await createServerSupabaseClient()
+  await supabase.auth.updateUser({ data: { name: parsed.data.name } })
 
   const updated = await db.user.update({
     where: { id: user.id },

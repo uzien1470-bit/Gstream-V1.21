@@ -201,3 +201,37 @@ Work Log:
 Stage Summary:
 - Brand identity unified — the uploaded logo now appears everywhere the Gstream brand mark is shown (header, footer, auth pages, watch top bar, admin sidebar, browser favicon, apple touch icon)
 - Reusable BrandMark component ensures consistency and easy future updates (change one file to rebrand)
+
+---
+Task ID: 16
+Agent: main
+Task: Migrate Prisma SQLite → Supabase PostgreSQL; replace custom auth with Supabase Auth; add Supabase Storage; ready for Vercel
+
+Work Log:
+- Installed @supabase/supabase-js + @supabase/ssr; removed bcryptjs (no longer needed)
+- Rewrote prisma/schema.prisma: provider sqlite→postgresql; removed passwordHash, Session, PasswordToken models (Supabase manages auth); kept User as profile table (id = Supabase auth UUID)
+- Generated Postgres migration SQL via `prisma migrate diff --from-empty --to-schema-datamodel` → prisma/migrations/0_init/migration.sql (461 lines)
+- Created supabase/setup.sql: storage buckets (posters/backdrops/avatars/uploads), auth→profile trigger (auto-creates public.User row on signup), RLS policies (public catalogue read, owner-only user activity, admin-only writes)
+- Created Supabase client helpers: server.ts (@supabase/ssr createServerClient with cookies), client.ts (browser singleton), admin.ts (service-role, server-only), configured.ts (isSupabaseConfigured env-var gate)
+- Rewrote src/lib/auth.ts: getSessionUser() reads Supabase session → fetches Prisma profile; requireAuth()/requireAdmin() keep same signatures so API routes unchanged; added authErrorStatus() helper
+- Rewrote auth API routes: register (supabase.auth.signUp), login (signInWithPassword + profile status check), logout (signOut), me (getUser + Prisma profile), forgot-password (resetPasswordForEmail), reset-password (updateUser password)
+- Rewrote profile API: change-password (verify via re-signin, then updateUser), update (Prisma profile + sync name to auth metadata), avatar upload (POST /api/profile/avatar → Supabase Storage avatars bucket)
+- Added admin upload route (POST /api/admin/upload → admin-only, service-role client, posters/backdrops/uploads buckets)
+- Updated admin users DELETE to also call supabase.auth.admin.deleteUser (Prisma only manages the profile; auth.users is Supabase-managed)
+- Updated reset-password page to work with Supabase recovery flow (token in email link, no manual token entry needed)
+- Updated seed.ts: removed bcrypt; uses createAdminSupabaseClient().auth.admin.createUser for admin + demo users; promotes admin role in profile table
+- Created isSupabaseConfigured gate + SupabaseSetupScreen component (5-step setup guide with logo, links to Supabase dashboard)
+- Gated all server-rendered pages (home, movies, tv-series, anime, search, watch) to show setup screen when Supabase env vars missing — app degrades gracefully instead of crashing
+- Created .env.example (5 vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, DIRECT_URL)
+- Updated next.config.ts: added image remotePatterns for TMDB, sfile.chatglm.cn, dicebear, *.supabase.co
+- Updated package.json scripts: added db:seed, db:migrate:dev, supabase:setup
+- Created DEPLOYMENT.md: 6-step guide (create Supabase, set env vars, db:push, run setup.sql, seed, deploy to Vercel) + architecture table + storage/auth explanations + troubleshooting
+- Verified via Agent Browser: dev server runs without Supabase creds; all pages show setup screen (200 status, correct titles); VLM confirmed setup screen is clear with numbered steps + logo
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- Full migration to Supabase complete: PostgreSQL via Prisma (schema + migration SQL), Supabase Auth (replacing bcrypt sessions), Supabase Storage (upload routes for posters/backdrops/avatars)
+- Prisma remains the ORM for all DB access (no @supabase/supabase-js for queries, per requirement)
+- App is Vercel-ready: set 5 env vars, run db:push + supabase/setup.sql + db:seed, deploy
+- Without Supabase creds, app shows a helpful 5-step setup screen (no crashes)
+- Demo credentials (after seeding): admin@gstream.com/admin123, user@gstream.com/user123

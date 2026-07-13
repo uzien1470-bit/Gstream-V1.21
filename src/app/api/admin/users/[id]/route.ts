@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/auth'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 
 export async function PUT(
   req: NextRequest,
@@ -19,7 +20,7 @@ export async function PUT(
   const target = await db.user.findUnique({ where: { id } })
   if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  const data: any = {}
+  const data: { status?: string; role?: string } = {}
 
   // Status updates — only "active" | "suspended"
   if (body.status !== undefined) {
@@ -27,14 +28,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
     if (body.status === 'suspended') {
-      // Cannot suspend an admin
       if (target.role === 'admin') {
         return NextResponse.json(
           { error: 'Cannot suspend an admin user' },
           { status: 400 },
         )
       }
-      // Cannot suspend yourself
       if (target.id === current.id) {
         return NextResponse.json(
           { error: 'You cannot suspend your own account' },
@@ -50,7 +49,6 @@ export async function PUT(
     if (!['user', 'admin'].includes(body.role)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
-    // Demoting an admin → ensure they're not the last admin
     if (target.role === 'admin' && body.role === 'user') {
       const adminCount = await db.user.count({ where: { role: 'admin' } })
       if (adminCount <= 1) {
@@ -65,12 +63,9 @@ export async function PUT(
 
   try {
     const updated = await db.user.update({ where: { id }, data })
-    // Strip passwordHash from response
-     
-    const { passwordHash, ...safe } = updated as any
-    return NextResponse.json({ item: safe })
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
+    return NextResponse.json({ item: updated })
+  } catch (err) {
+    if ((err as { code?: string })?.code === 'P2025') {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
     throw err
@@ -107,13 +102,17 @@ export async function DELETE(
     )
   }
 
-  try {
-    await db.user.delete({ where: { id } })
-    return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-    throw err
+  // Delete the auth.users entry via the Supabase admin client.
+  // The ON DELETE CASCADE on public."User" (set up in the trigger / migration)
+  // removes the profile row automatically.
+  const admin = createAdminSupabaseClient()
+  const { error } = await admin.auth.admin.deleteUser(id)
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Fallback: ensure the profile row is gone (in case cascade isn't set up)
+  await db.user.delete({ where: { id } }).catch(() => {})
+
+  return NextResponse.json({ ok: true })
 }

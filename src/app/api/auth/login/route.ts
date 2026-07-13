@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { db } from '@/lib/db'
-import { hashPassword, verifyPassword, createSession, setSessionCookie } from '@/lib/auth'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -16,28 +16,39 @@ export async function POST(req: NextRequest) {
   }
   const { email, password } = parsed.data
 
-  const user = await db.user.findUnique({ where: { email: email.toLowerCase() } })
-  if (!user) {
-    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-  }
-  if (user.status === 'suspended') {
-    return NextResponse.json({ error: 'Account suspended. Contact support.' }, { status: 403 })
-  }
-  const ok = await verifyPassword(password, user.passwordHash)
-  if (!ok) {
-    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error || !data.user) {
+    return NextResponse.json(
+      { error: error?.message ?? 'Invalid credentials' },
+      { status: 401 },
+    )
   }
 
-  const token = await createSession(user.id)
-  await setSessionCookie(token)
+  // Fetch profile to check status
+  const profile = await db.user.findUnique({ where: { id: data.user.id } })
+  if (!profile) {
+    return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+  }
+  if (profile.status === 'suspended') {
+    await supabase.auth.signOut()
+    return NextResponse.json(
+      { error: 'Account suspended. Contact support.' },
+      { status: 403 },
+    )
+  }
 
   return NextResponse.json({
     user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      avatarUrl: user.avatarUrl,
+      id: profile.id,
+      email: profile.email,
+      name: profile.name,
+      role: profile.role,
+      avatarUrl: profile.avatarUrl,
     },
   })
 }

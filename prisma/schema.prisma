@@ -1,63 +1,42 @@
 // Gstream — Premium OTT Streaming Platform
-// Prisma schema (SQLite). Mirrors a Supabase-style data model so the
-// data-access layer can be swapped to Supabase with minimal changes.
+// Prisma schema (PostgreSQL). Designed for Supabase.
+//
+// Auth is handled by Supabase Auth (auth.users table, managed by Supabase).
+// This schema defines a public."User" profile table whose `id` (UUID) references
+// auth.users(id) ON DELETE CASCADE. A Supabase trigger (see supabase/setup.sql)
+// auto-creates a profile row whenever a new auth.users row is inserted.
+//
+// Prisma does not manage auth.users; it only manages the public schema tables below.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ───────────────────────────── Auth / Users ─────────────────────────────
+// ───────────────────────────── User Profile ─────────────────────────────
+// Mirror of auth.users for app-specific data (role, status, avatar).
+// `id` is the Supabase auth user UUID (text to stay flexible across UUID formats).
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  passwordHash  String
-  avatarUrl     String?
-  role          String   @default("user") // "user" | "admin"
-  status        String   @default("active") // "active" | "suspended"
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id         String   @id // matches auth.users(id) — UUID string
+  email      String   @unique
+  name       String?
+  avatarUrl  String?
+  role       String   @default("user") // "user" | "admin"
+  status     String   @default("active") // "active" | "suspended"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  sessions       Session[]
-  myList         MyList[]
-  watchHistory   WatchHistory[]
-  watchProgress  WatchProgress[]
-  passwordTokens PasswordToken[]
+  myList        MyList[]
+  watchHistory  WatchHistory[]
+  watchProgress WatchProgress[]
 
   @@index([role])
   @@index([status])
-}
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model PasswordToken {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 // ───────────────────────────── Taxonomy ─────────────────────────────
@@ -68,8 +47,8 @@ model Genre {
   slug      String      @unique
   createdAt DateTime    @default(now())
 
-  movies  Movie[]
-  series  Series[]
+  movies Movie[]
+  series Series[]
 }
 
 model Category {
@@ -79,8 +58,8 @@ model Category {
   icon      String?
   createdAt DateTime @default(now())
 
-  movies  Movie[]
-  series  Series[]
+  movies Movie[]
+  series Series[]
 }
 
 // ───────────────────────────── Streaming Servers ─────────────────────────────
@@ -100,28 +79,28 @@ model StreamingServer {
 // ───────────────────────────── Movies ─────────────────────────────
 
 model Movie {
-  id             String   @id @default(cuid())
-  title          String
-  slug           String   @unique
-  synopsis       String
-  posterUrl      String
-  backdropUrl    String
-  logoUrl        String?
-  releaseYear    Int
-  runtime        Int // minutes
-  rating         Float    @default(0) // 0-10
-  voteCount      Int      @default(0)
-  trailerUrl     String?
-  type           String   @default("movie")
-  featured       Boolean  @default(false)
-  trending       Boolean  @default(false)
-  popular        Boolean  @default(false)
-  topRated       Boolean  @default(false)
-  recentlyAdded  Boolean  @default(true)
-  recentlyUpdated Boolean  @default(true)
-  status         String   @default("published") // "draft" | "published"
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  synopsis        String
+  posterUrl       String
+  backdropUrl     String
+  logoUrl         String?
+  releaseYear     Int
+  runtime         Int // minutes
+  rating          Float    @default(0) // 0-10
+  voteCount       Int      @default(0)
+  trailerUrl      String?
+  type            String   @default("movie")
+  featured        Boolean  @default(false)
+  trending        Boolean  @default(false)
+  popular         Boolean  @default(false)
+  topRated        Boolean  @default(false)
+  recentlyAdded   Boolean  @default(true)
+  recentlyUpdated Boolean   @default(true)
+  status          String   @default("published") // "draft" | "published"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   genres     Genre[]
   categories Category[]
@@ -145,7 +124,7 @@ model MovieServer {
   movieId   String
   serverId  String
   embedUrl  String
-  quality   String   @default("Auto") // "Auto" | "1080p" | "720p" ...
+  quality   String   @default("Auto")
   priority  Int      @default(0)
   status    String   @default("active")
   createdAt DateTime @default(now())
@@ -159,29 +138,28 @@ model MovieServer {
 
 // ───────────────────────────── TV Series & Anime ─────────────────────────────
 
-// Shared model for both TV Series and Anime (type field differentiates)
 model Series {
-  id             String   @id @default(cuid())
-  title          String
-  slug           String   @unique
-  synopsis       String
-  posterUrl      String
-  backdropUrl    String
-  logoUrl        String?
-  releaseYear    Int
-  rating         Float    @default(0)
-  voteCount      Int      @default(0)
-  trailerUrl     String?
-  type           String   @default("series") // "series" | "anime"
-  featured       Boolean  @default(false)
-  trending       Boolean  @default(false)
-  popular        Boolean  @default(false)
-  topRated       Boolean  @default(false)
-  recentlyAdded  Boolean  @default(true)
-  recentlyUpdated Boolean  @default(true)
-  status         String   @default("published")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  synopsis        String
+  posterUrl       String
+  backdropUrl     String
+  logoUrl         String?
+  releaseYear     Int
+  rating          Float    @default(0)
+  voteCount       Int      @default(0)
+  trailerUrl      String?
+  type            String   @default("series") // "series" | "anime"
+  featured        Boolean  @default(false)
+  trending        Boolean  @default(false)
+  popular         Boolean  @default(false)
+  topRated        Boolean  @default(false)
+  recentlyAdded   Boolean  @default(true)
+  recentlyUpdated Boolean   @default(true)
+  status          String   @default("published")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   genres     Genre[]
   categories Category[]
@@ -263,7 +241,6 @@ model FeaturedBanner {
   logoUrl     String?
   order       Int      @default(0)
   active      Boolean  @default(true)
-  // polymorphic relation to movie or series
   movieId     String?
   seriesId    String?
   createdAt   DateTime @default(now())
@@ -299,7 +276,7 @@ model WatchHistory {
   movieId     String?
   seriesId    String?
   episodeId   String?
-  contentType String // "movie" | "series" | "anime"
+  contentType String
   watchedAt   DateTime @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
