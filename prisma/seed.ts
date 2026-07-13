@@ -1,5 +1,5 @@
 
-import { createAdminSupabaseClient } from '@/lib/supabase/admin'
+import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // TMDB image CDN base — publicly accessible
 const IMG = (path: string) => `https://image.tmdb.org/t/p/original${path}`

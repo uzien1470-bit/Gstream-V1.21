@@ -6,7 +6,7 @@
  * is wrapped so that if Supabase is unreachable or unconfigured the functions
  * resolve to empty results instead of throwing — the public site always loads.
  */
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase'
 import type {
   ContentCardData,
   ContentDetail,

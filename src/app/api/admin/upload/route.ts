@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
-import { createAdminSupabaseClient } from '@/lib/supabase/admin'
+import { createAdminSupabaseClient } from '@/lib/supabase'
 
 const ALLOWED_BUCKETS = ['posters', 'backdrops', 'uploads', 'avatars']
 

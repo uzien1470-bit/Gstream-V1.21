@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase'
 import { movieToCard, seriesToCard } from '@/lib/content'
 import type { ContentCardData } from '@/lib/types'
 

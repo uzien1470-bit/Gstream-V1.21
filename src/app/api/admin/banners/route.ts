@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminSupabaseClient } from '@/lib/supabase/admin'
+import { createAdminSupabaseClient } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/auth'
 
 export async function GET() {
