@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import {
   Search, Menu, X, Film, Tv, Sparkles, Bookmark, History,
   User, LogOut, LayoutDashboard, Shield, ChevronDown,
@@ -27,6 +27,20 @@ const NAV = [
   { href: '/anime', label: 'Anime', icon: Sparkles },
 ]
 
+// Client-only mounted flag via useSyncExternalStore.
+// Returns false on the server and during the initial hydration render,
+// then true on subsequent client renders — with no side effects in render
+// and no setState-in-effect. Used to gate the Radix <Sheet> (mobile menu)
+// so its generated aria-controls IDs don't cause a hydration mismatch.
+const emptySubscribe = () => () => {}
+function useMounted() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true, // client snapshot
+    () => false, // server snapshot
+  )
+}
+
 export function SiteHeader() {
   const pathname = usePathname()
   const router = useRouter()
@@ -34,14 +48,8 @@ export function SiteHeader() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useMounted()
   const { user, signOut } = useSession()
-
-  // Flip `mounted` on the first client render (render-time state update,
-  // avoids both the setState-in-effect lint rule and SSR/client mismatch).
-  if (!mounted) {
-    queueMicrotask(() => setMounted(true))
-  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)

@@ -307,3 +307,19 @@ Stage Summary:
 - App never blocks: public site loads normally (empty data) when Supabase unconfigured; only a small dismissible warning banner in admin dashboard
 - Ready for Vercel: set 3 env vars, run supabase/schema.sql in SQL Editor, run bun run db:seed, deploy
 - Demo: admin@gstream.com/admin123, user@gstream.com/user123
+
+---
+Task ID: 17
+Agent: main
+Task: Fix "Can't perform React state update on unmounted component" in SiteHeader
+
+Work Log:
+- Root cause: queueMicrotask(() => setMounted(true)) in the render body fired before the component finished mounting, triggering a state update on an unmounted component (React 19 strictness)
+- Replaced with useSyncExternalStore-based useMounted() hook: returns false on server + initial hydration render, true on subsequent client renders — no side effects in render, no setState-in-effect, no microtasks
+- Pattern: const emptySubscribe = () => () => {}; useSyncExternalStore(emptySubscribe, () => true, () => false)
+- This preserves the original purpose: gating the Radix <Sheet> (mobile menu) client-side to avoid the aria-controls useId hydration mismatch
+- Verified via Agent Browser: 0 console errors, 0 page errors; mobile menu button renders at 800px viewport and opens correctly showing all nav items + auth buttons
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- React state-update error resolved; mobile menu works identically, just mounts one render later (imperceptible)
