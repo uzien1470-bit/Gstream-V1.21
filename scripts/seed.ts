@@ -948,15 +948,29 @@ async function main() {
   const supabase = createAdminSupabaseClient()
 
   const SENTINEL = '00000000-0000-0000-0000-000000000000'
-  const tables = [
+  // Tables with a single `id` column (PK) — delete via .neq('id', SENTINEL)
+  const idTables = [
     'WatchProgress', 'WatchHistory', 'MyList', 'FeaturedBanner',
     'EpisodeServer', 'MovieServer', 'Episode', 'Season',
-    'Movie_genres', 'Movie_categories', 'Series_genres', 'Series_categories',
     'Movie', 'Series', 'StreamingServer', 'Genre', 'Category',
   ]
+  // Junction tables have composite PKs and NO `id` column — delete all rows.
+  // (FK CASCADE from parent deletes also handles these, but we clean them
+  // explicitly first to avoid any orphaned rows from partial previous runs.)
+  const junctionTables = [
+    'Movie_genres', 'Movie_categories', 'Series_genres', 'Series_categories',
+  ]
   console.log('─ Cleaning existing rows...')
-  for (const t of tables) {
+  for (const t of idTables) {
     const { error } = await supabase.from(t).delete().neq('id', SENTINEL)
+    if (error) console.warn(`  ⚠ delete from ${t}: ${error.message}`)
+  }
+  for (const t of junctionTables) {
+    // Junction tables have composite PKs (no `id`). Delete all rows by
+    // filtering on a column that always exists with a never-matching sentinel.
+    // Each junction has either movieId or seriesId — use the appropriate one.
+    const fkCol = t.startsWith('Movie') ? 'movieId' : 'seriesId'
+    const { error } = await supabase.from(t).delete().neq(fkCol, SENTINEL)
     if (error) console.warn(`  ⚠ delete from ${t}: ${error.message}`)
   }
   const { error: userDelErr } = await supabase.from('User').delete().neq('id', SENTINEL)

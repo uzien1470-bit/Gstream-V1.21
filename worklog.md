@@ -436,3 +436,29 @@ Stage Summary:
 - 0 Prisma imports (fully on @supabase/supabase-js)
 - Seed is idempotent (upsert + user reuse) and prints full summary table
 - Backend is production-ready for Vercel deployment
+
+---
+Task ID: PRE-DOWNLOAD-AUDIT
+Agent: main
+Task: Complete backend audit before download — production-ready verification
+
+Work Log:
+- Removed stale .env SQLite DATABASE_URL (was file:/home/z/my-project/db/custom.db)
+- Created missing .env.example with the 3 required Supabase env vars
+- Moved scripts/seed.ts out of prisma/ directory (no Prisma anymore); updated package.json db:seed path
+- Removed stale prisma/ directory (schema.prisma no longer used by any code)
+- Removed stale db/custom.db SQLite database file
+- Fixed seed cleanup loop: junction tables (Movie_genres, Movie_categories, Series_genres, Series_categories) have composite PKs with no `id` column — was using .neq('id', SENTINEL) which errored silently. Now branches on table name to use the correct FK column (movieId or seriesId)
+- Verified via subagent: all 18 tables, ~110 columns, 4 junction tables, 14 relation hints, and 6 upsert onConflict constraints match between schema.sql and application queries
+- Verified: 0 Prisma imports, 0 SQLite references, 0 db.ts imports, 0 @/lib/db imports
+- Verified: only 3 env vars used (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY) — no DATABASE_URL
+- Verified: `npm run build` exits with code 0, "Compiled successfully in 13.8s"
+- Verified: `bun run lint` — 0 errors, 0 warnings
+- Verified: all 30 routes (22 pages + 7 API + 1 health) return 200
+- Verified: seed script prints clear error when Supabase unconfigured
+
+Stage Summary:
+- Backend is fully production-ready for Vercel deployment
+- Only 3 env vars needed: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+- `npm install` + `npm run dev` + `npm run build` all complete with zero errors
+- No Prisma, no SQLite, no db.ts — fully on @supabase/supabase-js

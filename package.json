@@ -7,7 +7,7 @@
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
-    "db:seed": "bun run prisma/seed.ts",
+    "db:seed": "bun run scripts/seed.ts",
     "supabase:setup": "echo 'Run supabase/schema.sql in the Supabase SQL Editor (Dashboard → SQL → New query)'"
   },
   "dependencies": {

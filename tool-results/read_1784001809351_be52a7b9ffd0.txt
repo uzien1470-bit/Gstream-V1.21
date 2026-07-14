@@ -1,0 +1,1205 @@
+     1→
+     2→import { createAdminSupabaseClient } from '@/lib/supabase'
+     3→
+     4→// TMDB image CDN base — publicly accessible
+     5→const IMG = (path: string) => `https://image.tmdb.org/t/p/original${path}`
+     6→
+     7→// YouTube embed helper (real, working embeds for the demo streaming player)
+     8→const YT = (id: string) => `https://www.youtube.com/embed/${id}?autoplay=0&rel=0&modestbranding=1`
+     9→
+    10→interface CastDef {
+    11→  name: string
+    12→  role: string
+    13→  image?: string
+    14→}
+    15→
+    16→interface ServerDef {
+    17→  name: string
+    18→  embedUrl: string
+    19→  quality?: string
+    20→  priority?: number
+    21→}
+    22→
+    23→interface MovieDef {
+    24→  title: string
+    25→  slug: string
+    26→  synopsis: string
+    27→  poster: string
+    28→  backdrop: string
+    29→  logo?: string
+    30→  year: number
+    31→  runtime: number
+    32→  rating: number
+    33→  votes: number
+    34→  trailer?: string
+    35→  genres: string[]
+    36→  categories: string[]
+    37→  cast: CastDef[]
+    38→  servers: ServerDef[]
+    39→  flags?: Partial<{ trending: boolean; popular: boolean; topRated: boolean; featured: boolean; recentlyAdded: boolean; recentlyUpdated: boolean }>
+    40→}
+    41→
+    42→interface EpisodeDef {
+    43→  title: string
+    44→  description: string
+    45→  thumbnail?: string
+    46→  runtime: number
+    47→  airDate?: string
+    48→  servers: ServerDef[]
+    49→}
+    50→
+    51→interface SeasonDef {
+    52→  seasonNumber: number
+    53→  title: string
+    54→  description?: string
+    55→  poster?: string
+    56→  episodes: EpisodeDef[]
+    57→}
+    58→
+    59→interface SeriesDef {
+    60→  title: string
+    61→  slug: string
+    62→  synopsis: string
+    63→  poster: string
+    64→  backdrop: string
+    65→  logo?: string
+    66→  year: number
+    67→  rating: number
+    68→  votes: number
+    69→  trailer?: string
+    70→  genres: string[]
+    71→  categories: string[]
+    72→  cast: CastDef[]
+    73→  seasons: SeasonDef[]
+    74→  flags?: Partial<{ trending: boolean; popular: boolean; topRated: boolean; featured: boolean; recentlyAdded: boolean; recentlyUpdated: boolean }>
+    75→}
+    76→
+    77→// ───────────────────────── Streaming servers ─────────────────────────
+    78→const SERVERS = [
+    79→  { name: 'VidFast', slug: 'vidfast', priority: 10, status: 'active' },
+    80→  { name: 'Filemoon', slug: 'filemoon', priority: 9, status: 'active' },
+    81→  { name: 'StreamWish', slug: 'streamwish', priority: 8, status: 'active' },
+    82→  { name: 'VidHide', slug: 'vidhide', priority: 7, status: 'active' },
+    83→  { name: 'MixDrop', slug: 'mixdrop', priority: 6, status: 'active' },
+    84→  { name: 'Voe', slug: 'voe', priority: 5, status: 'active' },
+    85→]
+    86→
+    87→// helper to attach the same embed to multiple named servers
+    88→function ytServers(ids: Record<string, string>): ServerDef[] {
+    89→  return SERVERS.map((s, i) => {
+    90→    const yt = ids[s.slug] ?? ids['vidfast'] ?? Object.values(ids)[0]
+    91→    return {
+    92→      name: s.name,
+    93→      embedUrl: YT(yt),
+    94→      quality: ['1080p', '720p', 'Auto', '480p', '360p', 'HD'][i % 6],
+    95→      priority: s.priority,
+    96→    }
+    97→  })
+    98→}
+    99→
+   100→// ───────────────────────── Genres ─────────────────────────
+   101→const GENRES = [
+   102→  'Action', 'Adventure', 'Drama', 'Sci-Fi', 'Thriller', 'Crime', 'Fantasy',
+   103→  'Animation', 'Comedy', 'Horror', 'Mystery', 'Romance', 'War', 'Western',
+   104→  'Documentary', 'Family', 'History', 'Music', 'Biography',
+   105→]
+   106→
+   107→const CATEGORIES = [
+   108→  { name: 'Trending Now', slug: 'trending-now', icon: 'Flame' },
+   109→  { name: 'New Releases', slug: 'new-releases', icon: 'Sparkles' },
+   110→  { name: 'Top Rated', slug: 'top-rated', icon: 'Star' },
+   111→  { name: 'Action & Adventure', slug: 'action-adventure', icon: 'Swords' },
+   112→  { name: 'Sci-Fi Worlds', slug: 'sci-fi-worlds', icon: 'Rocket' },
+   113→  { name: 'Dark & Gritty', slug: 'dark-gritty', icon: 'Moon' },
+   114→  { name: 'Anime Universe', slug: 'anime-universe', icon: 'Sparkle' },
+   115→  { name: 'Critically Acclaimed', slug: 'critically-acclaimed', icon: 'Award' },
+   116→]
+   117→
+   118→// ───────────────────────── Movies ─────────────────────────
+   119→const MOVIES: MovieDef[] = [
+   120→  {
+   121→    title: 'Dune: Part Two',
+   122→    slug: 'dune-part-two',
+   123→    synopsis: 'Paul Atreides unites with the Fremen and seeks revenge against the conspirators who destroyed his family. Facing a choice between the love of his life and the fate of the universe, he must prevent a terrible future only he can foresee.',
+   124→    poster: IMG('/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg'),
+   125→    backdrop: IMG('/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg'),
+   126→    year: 2024, runtime: 166, rating: 8.3, votes: 6800,
+   127→    trailer: YT('Way9Dexny3w'),
+   128→    genres: ['Sci-Fi', 'Adventure', 'Drama'],
+   129→    categories: ['trending-now', 'new-releases', 'sci-fi-worlds'],
+   130→    cast: [
+   131→      { name: 'Timothée Chalamet', role: 'Paul Atreides' },
+   132→      { name: 'Zendaya', role: 'Chani' },
+   133→      { name: 'Rebecca Ferguson', role: 'Lady Jessica' },
+   134→      { name: 'Javier Bardem', role: 'Stilgar' },
+   135→    ],
+   136→    servers: ytServers({ vidfast: 'Way9Dexny3w', filemoon: 'n9x7gq3pVUc', streamwish: 'QmPP3JQqYiw' }),
+   137→    flags: { trending: true, popular: true, topRated: true, featured: true, recentlyAdded: true },
+   138→  },
+   139→  {
+   140→    title: 'Oppenheimer',
+   141→    slug: 'oppenheimer',
+   142→    synopsis: 'The story of American scientist J. Robert Oppenheimer and his role in the development of the atomic bomb during World War II, and the moral reckoning that followed.',
+   143→    poster: IMG('/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg'),
+   144→    backdrop: IMG('/fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg'),
+   145→    year: 2023, runtime: 180, rating: 8.4, votes: 9200,
+   146→    trailer: YT('uYPbbksJxIg'),
+   147→    genres: ['Biography', 'Drama', 'History'],
+   148→    categories: ['top-rated', 'critically-acclaimed'],
+   149→    cast: [
+   150→      { name: 'Cillian Murphy', role: 'J. Robert Oppenheimer' },
+   151→      { name: 'Emily Blunt', role: 'Katherine Oppenheimer' },
+   152→      { name: 'Robert Downey Jr.', role: 'Lewis Strauss' },
+   153→      { name: 'Matt Damon', role: 'Leslie Groves' },
+   154→    ],
+   155→    servers: ytServers({ vidfast: 'uYPbbksJxIg', filemoon: 'm4qKqJxJZvw' }),
+   156→    flags: { trending: true, popular: true, topRated: true, featured: true },
+   157→  },
+   158→  {
+   159→    title: 'The Batman',
+   160→    slug: 'the-batman',
+   161→    synopsis: 'When the Riddler, a sadistic serial killer, begins murdering key political figures in Gotham, Batman is forced to investigate the city\'s hidden corruption and question his family\'s involvement.',
+   162→    poster: IMG('/74xTEgt7R36Fpooo50r9T25onhq.jpg'),
+   163→    backdrop: IMG('/b0PlSFdDwbyK0cf5RxwDpaOJQvQ.jpg'),
+   164→    year: 2022, runtime: 176, rating: 7.8, votes: 8100,
+   165→    trailer: YT('mqqft2x_Aa4'),
+   166→    genres: ['Crime', 'Mystery', 'Action'],
+   167→    categories: ['dark-gritty', 'action-adventure'],
+   168→    cast: [
+   169→      { name: 'Robert Pattinson', role: 'Bruce Wayne' },
+   170→      { name: 'Zoë Kravitz', role: 'Selina Kyle' },
+   171→      { name: 'Paul Dano', role: 'The Riddler' },
+   172→      { name: 'Colin Farrell', role: 'Oswald Cobblepot' },
+   173→    ],
+   174→    servers: ytServers({ vidfast: 'mqqft2x_Aa4', filemoon: 'rFptlxtKt7I' }),
+   175→    flags: { popular: true, topRated: true, featured: true },
+   176→  },
+   177→  {
+   178→    title: 'Interstellar',
+   179→    slug: 'interstellar',
+   180→    synopsis: 'When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans.',
+   181→    poster: IMG('/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg'),
+   182→    backdrop: IMG('/pbrkL804c8yAv3zBZR4QPEafpAR.jpg'),
+   183→    year: 2014, runtime: 169, rating: 8.4, votes: 35000,
+   184→    trailer: YT('zSWdZVtXT7E'),
+   185→    genres: ['Sci-Fi', 'Drama', 'Adventure'],
+   186→    categories: ['sci-fi-worlds', 'top-rated', 'critically-acclaimed'],
+   187→    cast: [
+   188→      { name: 'Matthew McConaughey', role: 'Cooper' },
+   189→      { name: 'Anne Hathaway', role: 'Brand' },
+   190→      { name: 'Jessica Chastain', role: 'Murph' },
+   191→      { name: 'Michael Caine', role: 'Professor Brand' },
+   192→    ],
+   193→    servers: ytServers({ vidfast: 'zSWdZVtXT7E', filemoon: 'Lm8p5rlrjAY' }),
+   194→    flags: { popular: true, topRated: true, recentlyAdded: true },
+   195→  },
+   196→  {
+   197→    title: 'Inception',
+   198→    slug: 'inception',
+   199→    synopsis: 'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O., but his tragic past may doom the project.',
+   200→    poster: IMG('/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg'),
+   201→    backdrop: IMG('/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg'),
+   202→    year: 2010, runtime: 148, rating: 8.4, votes: 37000,
+   203→    trailer: YT('YoHD9XEInc0'),
+   204→    genres: ['Action', 'Adventure', 'Sci-Fi', 'Thriller'],
+   205→    categories: ['action-adventure', 'sci-fi-worlds', 'critically-acclaimed'],
+   206→    cast: [
+   207→      { name: 'Leonardo DiCaprio', role: 'Cobb' },
+   208→      { name: 'Joseph Gordon-Levitt', role: 'Arthur' },
+   209→      { name: 'Elliot Page', role: 'Ariadne' },
+   210→      { name: 'Tom Hardy', role: 'Eames' },
+   211→    ],
+   212→    servers: ytServers({ vidfast: 'YoHD9XEInc0', filemoon: 'GibQbi5L0Y8' }),
+   213→    flags: { popular: true, topRated: true },
+   214→  },
+   215→  {
+   216→    title: 'The Dark Knight',
+   217→    slug: 'the-dark-knight',
+   218→    synopsis: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
+   219→    poster: IMG('/qJ2tW6WMUDux911r6m7haRef0WH.jpg'),
+   220→    backdrop: IMG('/hkBaDkMWbLaf8B1lsWsKX7Ew3Xq.jpg'),
+   221→    year: 2008, runtime: 152, rating: 9.0, votes: 30000,
+   222→    trailer: YT('EXeTwQWrcwY'),
+   223→    genres: ['Action', 'Crime', 'Drama', 'Thriller'],
+   224→    categories: ['dark-gritty', 'action-adventure', 'critically-acclaimed'],
+   225→    cast: [
+   226→      { name: 'Christian Bale', role: 'Bruce Wayne' },
+   227→      { name: 'Heath Ledger', role: 'Joker' },
+   228→      { name: 'Aaron Eckhart', role: 'Harvey Dent' },
+   229→      { name: 'Gary Oldman', role: 'Jim Gordon' },
+   230→    ],
+   231→    servers: ytServers({ vidfast: 'EXeTwQWrcwY', filemoon: 'PY6cArIyyE0' }),
+   232→    flags: { popular: true, topRated: true, featured: true },
+   233→  },
+   234→  {
+   235→    title: 'Blade Runner 2049',
+   236→    slug: 'blade-runner-2049',
+   237→    synopsis: 'Young Blade Runner K\'s discovery of a long-buried secret leads him to track down former Blade Runner Rick Deckard, who has been missing for thirty years.',
+   238→    poster: IMG('/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg'),
+   239→    backdrop: IMG('/ilRyazdMJwN05exqhwK4tMKBYZs.jpg'),
+   240→    year: 2017, runtime: 164, rating: 8.0, votes: 16000,
+   241→    trailer: YT('gCcx85zbxz4'),
+   242→    genres: ['Sci-Fi', 'Drama', 'Mystery'],
+   243→    categories: ['sci-fi-worlds', 'dark-gritty'],
+   244→    cast: [
+   245→      { name: 'Ryan Gosling', role: 'K' },
+   246→      { name: 'Harrison Ford', role: 'Rick Deckard' },
+   247→      { name: 'Ana de Armas', role: 'Joi' },
+   248→      { name: 'Sylvia Hoeks', role: 'Luv' },
+   249→    ],
+   250→    servers: ytServers({ vidfast: 'gCcx85zbxz4', filemoon: 'gCcx85zbxz4' }),
+   251→    flags: { topRated: true, recentlyAdded: true },
+   252→  },
+   253→  {
+   254→    title: 'Mad Max: Fury Road',
+   255→    slug: 'mad-max-fury-road',
+   256→    synopsis: 'In a post-apocalyptic wasteland, a woman rebels against a tyrannical ruler in search for her homeland with the aid of a group of female prisoners and a drifter named Max.',
+   257→    poster: IMG('/8tZYtuWezp8JbcsvHYO0O46tFbo.jpg'),
+   258→    backdrop: IMG('/gqrnQA6Xppdl8vIb2eJc58VC1tW.jpg'),
+   259→    year: 2015, runtime: 120, rating: 8.1, votes: 18000,
+   260→    trailer: YT('hEJnMQG9ev8'),
+   261→    genres: ['Action', 'Adventure', 'Sci-Fi'],
+   262→    categories: ['action-adventure', 'sci-fi-worlds'],
+   263→    cast: [
+   264→      { name: 'Tom Hardy', role: 'Max Rockatansky' },
+   265→      { name: 'Charlize Theron', role: 'Imperator Furiosa' },
+   266→      { name: 'Nicholas Hoult', role: 'Nux' },
+   267→    ],
+   268→    servers: ytServers({ vidfast: 'hEJnMQG9ev8' }),
+   269→    flags: { popular: true, topRated: true },
+   270→  },
+   271→  {
+   272→    title: 'Parasite',
+   273→    slug: 'parasite',
+   274→    synopsis: 'Greed and class discrimination threaten the newly formed symbiotic relationship between the wealthy Park family and the destitute Kim clan.',
+   275→    poster: IMG('/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg'),
+   276→    backdrop: IMG('/TU9NIjwzjoKPwQHoHshkFcQUCG.jpg'),
+   277→    year: 2019, runtime: 132, rating: 8.5, votes: 21000,
+   278→    trailer: YT('5xH0HfJHsaY'),
+   279→    genres: ['Drama', 'Thriller', 'Comedy'],
+   280→    categories: ['critically-acclaimed', 'top-rated'],
+   281→    cast: [
+   282→      { name: 'Song Kang-ho', role: 'Kim Ki-taek' },
+   283→      { name: 'Lee Sun-kyun', role: 'Park Dong-ik' },
+   284→      { name: 'Cho Yeo-jeong', role: 'Choi Yeon-gyo' },
+   285→    ],
+   286→    servers: ytServers({ vidfast: '5xH0HfJHsaY' }),
+   287→    flags: { topRated: true, recentlyAdded: true },
+   288→  },
+   289→  {
+   290→    title: 'Everything Everywhere All at Once',
+   291→    slug: 'everything-everywhere-all-at-once',
+   292→    synopsis: 'An aging Chinese immigrant is swept up in an insane adventure, where she alone can save existence by exploring other universes and connecting with the lives she could have led.',
+   293→    poster: IMG('/w3LxiVYdWWRvEVdn5RYq6jIqkb1.jpg'),
+   294→    backdrop: IMG('/nGxUxi3PfXDRm7Vg95VBNgNM8NM.jpg'),
+   295→    year: 2022, runtime: 139, rating: 8.0, votes: 14000,
+   296→    trailer: YT('wxN1T1uxQ2g'),
+   297→    genres: ['Sci-Fi', 'Adventure', 'Comedy'],
+   298→    categories: ['sci-fi-worlds', 'critically-acclaimed'],
+   299→    cast: [
+   300→      { name: 'Michelle Yeoh', role: 'Evelyn Wang' },
+   301→      { name: 'Ke Huy Quan', role: 'Waymond Wang' },
+   302→      { name: 'Jamie Lee Curtis', role: 'Deirdre Beaubeirdre' },
+   303→    ],
+   304→    servers: ytServers({ vidfast: 'wxN1T1uxQ2g' }),
+   305→    flags: { popular: true, topRated: true },
+   306→  },
+   307→  {
+   308→    title: 'Tenet',
+   309→    slug: 'tenet',
+   310→    synopsis: 'A secret agent is tasked with preventing World War III through time inversion, a technology that allows objects to move backward through time.',
+   311→    poster: IMG('/k68nPLbIST6NP96JmTxmZijEvCA.jpg'),
+   312→    backdrop: IMG('/2RRlWyfA5DMcdLRTcRWMvIyhVoB.jpg'),
+   313→    year: 2020, runtime: 150, rating: 7.3, votes: 11000,
+   314→    trailer: YT('L3pk_TBkihU'),
+   315→    genres: ['Action', 'Sci-Fi', 'Thriller'],
+   316→    categories: ['action-adventure', 'sci-fi-worlds'],
+   317→    cast: [
+   318→      { name: 'John David Washington', role: 'The Protagonist' },
+   319→      { name: 'Robert Pattinson', role: 'Neil' },
+   320→      { name: 'Elizabeth Debicki', role: 'Kat' },
+   321→    ],
+   322→    servers: ytServers({ vidfast: 'L3pk_TBkihU' }),
+   323→    flags: { trending: true, recentlyAdded: true },
+   324→  },
+   325→  {
+   326→    title: 'Joker',
+   327→    slug: 'joker',
+   328→    synopsis: 'A mentally troubled stand-up comedian embarks on a downward spiral that leads to the creation of an iconic villain.',
+   329→    poster: IMG('/udDclJoHjfjb8Ekgsd4FDteOkCU.jpg'),
+   330→    backdrop: IMG('/n6bUvigpRFqSwmPp1m2YADdbRBc.jpg'),
+   331→    year: 2019, runtime: 122, rating: 8.2, votes: 19000,
+   332→    trailer: YT('zAGVQLHvwOY'),
+   333→    genres: ['Crime', 'Drama', 'Thriller'],
+   334→    categories: ['dark-gritty', 'critically-acclaimed'],
+   335→    cast: [
+   336→      { name: 'Joaquin Phoenix', role: 'Arthur Fleck' },
+   337→      { name: 'Robert De Niro', role: 'Murray Franklin' },
+   338→      { name: 'Zazie Beetz', role: 'Sophie Dumond' },
+   339→    ],
+   340→    servers: ytServers({ vidfast: 'zAGVQLHvwOY' }),
+   341→    flags: { popular: true, topRated: true },
+   342→  },
+   343→  {
+   344→    title: 'Gladiator',
+   345→    slug: 'gladiator',
+   346→    synopsis: 'A former Roman General sets out to exact vengeance against the corrupt emperor who murdered his family and sent him into slavery.',
+   347→    poster: IMG('/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg'),
+   348→    backdrop: IMG('/hND7xAaxxBgaIspp9iMsaEXOSp5.jpg'),
+   349→    year: 2000, runtime: 155, rating: 8.5, votes: 17000,
+   350→    trailer: YT('owK1qxDselE'),
+   351→    genres: ['Action', 'Drama', 'Adventure'],
+   352→    categories: ['action-adventure', 'critically-acclaimed'],
+   353→    cast: [
+   354→      { name: 'Russell Crowe', role: 'Maximus' },
+   355→      { name: 'Joaquin Phoenix', role: 'Commodus' },
+   356→      { name: 'Connie Nielsen', role: 'Lucilla' },
+   357→    ],
+   358→    servers: ytServers({ vidfast: 'owK1qxDselE' }),
+   359→    flags: { topRated: true },
+   360→  },
+   361→  {
+   362→    title: 'The Matrix',
+   363→    slug: 'the-matrix',
+   364→    synopsis: 'A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.',
+   365→    poster: IMG('/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg'),
+   366→    backdrop: IMG('/fNG7i7RqMErkcqhohV2a6cV1Ehy.jpg'),
+   367→    year: 1999, runtime: 136, rating: 8.7, votes: 26000,
+   368→    trailer: YT('vKQi3bBA1y8'),
+   369→    genres: ['Action', 'Sci-Fi'],
+   370→    categories: ['sci-fi-worlds', 'action-adventure', 'critically-acclaimed'],
+   371→    cast: [
+   372→      { name: 'Keanu Reeves', role: 'Neo' },
+   373→      { name: 'Laurence Fishburne', role: 'Morpheus' },
+   374→      { name: 'Carrie-Anne Moss', role: 'Trinity' },
+   375→    ],
+   376→    servers: ytServers({ vidfast: 'vKQi3bBA1y8' }),
+   377→    flags: { popular: true, topRated: true },
+   378→  },
+   379→  {
+   380→    title: 'Spider-Man: No Way Home',
+   381→    slug: 'spider-man-no-way-home',
+   382→    synopsis: 'With Spider-Man\'s identity now revealed, Peter asks Doctor Strange for help. When a spell goes wrong, dangerous foes from other worlds appear, forcing Peter to discover what it truly means to be Spider-Man.',
+   383→    poster: IMG('/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg'),
+   384→    backdrop: IMG('/14QbnygCuTO0vl7CAFmPf1fgZfV.jpg'),
+   385→    year: 2021, runtime: 148, rating: 8.2, votes: 22000,
+   386→    trailer: YT('JfVOs4VSpmA'),
+   387→    genres: ['Action', 'Adventure', 'Sci-Fi'],
+   388→    categories: ['action-adventure', 'trending-now'],
+   389→    cast: [
+   390→      { name: 'Tom Holland', role: 'Peter Parker' },
+   391→      { name: 'Zendaya', role: 'MJ' },
+   392→      { name: 'Benedict Cumberbatch', role: 'Doctor Strange' },
+   393→    ],
+   394→    servers: ytServers({ vidfast: 'JfVOs4VSpmA' }),
+   395→    flags: { trending: true, popular: true },
+   396→  },
+   397→  {
+   398→    title: 'Top Gun: Maverick',
+   399→    slug: 'top-gun-maverick',
+   400→    synopsis: 'After thirty years, Maverick is still pushing the envelope as a top naval aviator, but must confront ghosts of his past when he leads TOP GUN\'s elite graduates on a mission that demands the ultimate sacrifice.',
+   401→    poster: IMG('/62HCnUTziyWcpDaBO2i1DX17ljH.jpg'),
+   402→    backdrop: IMG('/odJ4hx6g6vBt4lBWKFD1tI8WS4x.jpg'),
+   403→    year: 2022, runtime: 130, rating: 8.3, votes: 15000,
+   404→    trailer: YT('qSqVVswa420'),
+   405→    genres: ['Action', 'Drama'],
+   406→    categories: ['action-adventure', 'top-rated'],
+   407→    cast: [
+   408→      { name: 'Tom Cruise', role: 'Maverick' },
+   409→      { name: 'Miles Teller', role: 'Rooster' },
+   410→      { name: 'Jennifer Connelly', role: 'Penny' },
+   411→    ],
+   412→    servers: ytServers({ vidfast: 'qSqVVswa420' }),
+   413→    flags: { popular: true, topRated: true },
+   414→  },
+   415→  {
+   416→    title: 'John Wick: Chapter 4',
+   417→    slug: 'john-wick-chapter-4',
+   418→    synopsis: 'John Wick uncovers a path to defeating The High Table. But before he can earn his freedom, Wick must face off against a new enemy with powerful alliances across the globe.',
+   419→    poster: IMG('/vZloFAK7NmvMGKE7VkF5UHaz0I.jpg'),
+   420→    backdrop: IMG('/7I6VUdPj6tQECNHdviJkUHD2u89.jpg'),
+   421→    year: 2023, runtime: 169, rating: 7.7, votes: 9000,
+   422→    trailer: YT('qEVUtrk8_B4'),
+   423→    genres: ['Action', 'Thriller', 'Crime'],
+   424→    categories: ['action-adventure', 'dark-gritty'],
+   425→    cast: [
+   426→      { name: 'Keanu Reeves', role: 'John Wick' },
+   427→      { name: 'Donnie Yen', role: 'Caine' },
+   428→      { name: 'Bill Skarsgård', role: 'Marquis' },
+   429→    ],
+   430→    servers: ytServers({ vidfast: 'qEVUtrk8_B4' }),
+   431→    flags: { trending: true, popular: true, recentlyAdded: true },
+   432→  },
+   433→  {
+   434→    title: 'Avatar: The Way of Water',
+   435→    slug: 'avatar-the-way-of-water',
+   436→    synopsis: 'Jake Sully lives with his newfound family formed on the extrasolar moon Pandora. Once a familiar threat returns to finish what was previously started, Jake must work with Neytiri to protect their home.',
+   437→    poster: IMG('/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg'),
+   438→    backdrop: IMG('/s16H6tpK2utvwDtzZ8Qy4qm5Emw.jpg'),
+   439→    year: 2022, runtime: 192, rating: 7.6, votes: 12000,
+   440→    trailer: YT('d9MyW72ELq0'),
+   441→    genres: ['Sci-Fi', 'Adventure', 'Action'],
+   442→    categories: ['sci-fi-worlds', 'action-adventure'],
+   443→    cast: [
+   444→      { name: 'Sam Worthington', role: 'Jake Sully' },
+   445→      { name: 'Zoe Saldana', role: 'Neytiri' },
+   446→      { name: 'Sigourney Weaver', role: 'Kiri' },
+   447→    ],
+   448→    servers: ytServers({ vidfast: 'd9MyW72ELq0' }),
+   449→    flags: { popular: true },
+   450→  },
+   451→  {
+   452→    title: 'The Godfather',
+   453→    slug: 'the-godfather',
+   454→    synopsis: 'The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son.',
+   455→    poster: IMG('/3bhkrj58Vtu7enYsRolD1fZdja1.jpg'),
+   456→    backdrop: IMG('/tmU7GeKVybMWFButWEGl2M4GeiP.jpg'),
+   457→    year: 1972, runtime: 175, rating: 9.2, votes: 20000,
+   458→    trailer: YT('sY1S34973zA'),
+   459→    genres: ['Crime', 'Drama'],
+   460→    categories: ['critically-acclaimed', 'top-rated'],
+   461→    cast: [
+   462→      { name: 'Marlon Brando', role: 'Vito Corleone' },
+   463→      { name: 'Al Pacino', role: 'Michael Corleone' },
+   464→      { name: 'James Caan', role: 'Sonny Corleone' },
+   465→    ],
+   466→    servers: ytServers({ vidfast: 'sY1S34973zA' }),
+   467→    flags: { topRated: true },
+   468→  },
+   469→  {
+   470→    title: 'Pulp Fiction',
+   471→    slug: 'pulp-fiction',
+   472→    synopsis: 'The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption.',
+   473→    poster: IMG('/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg'),
+   474→    backdrop: IMG('/suaEOtk1N1sgg2MTM7oZd2cfVp3.jpg'),
+   475→    year: 1994, runtime: 154, rating: 8.9, votes: 23000,
+   476→    trailer: YT('s7EdQ4FqbhY'),
+   477→    genres: ['Crime', 'Drama'],
+   478→    categories: ['critically-acclaimed', 'top-rated'],
+   479→    cast: [
+   480→      { name: 'John Travolta', role: 'Vincent Vega' },
+   481→      { name: 'Samuel L. Jackson', role: 'Jules Winnfield' },
+   482→      { name: 'Uma Thurman', role: 'Mia Wallace' },
+   483→    ],
+   484→    servers: ytServers({ vidfast: 's7EdQ4FqbhY' }),
+   485→    flags: { topRated: true },
+   486→  },
+   487→]
+   488→
+   489→// ───────────────────────── TV Series ─────────────────────────
+   490→const SERIES: SeriesDef[] = [
+   491→  {
+   492→    title: 'Breaking Bad',
+   493→    slug: 'breaking-bad',
+   494→    synopsis: 'A chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine in order to secure his family\'s future.',
+   495→    poster: IMG('/ggFHVNu6YYI5L9pCfOacjizRGt.jpg'),
+   496→    backdrop: IMG('/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg'),
+   497→    year: 2008, rating: 9.5, votes: 21000,
+   498→    trailer: YT('HhesaQXLuRY'),
+   499→    genres: ['Crime', 'Drama', 'Thriller'],
+   500→    categories: ['dark-gritty', 'critically-acclaimed', 'top-rated'],
+   501→    cast: [
+   502→      { name: 'Bryan Cranston', role: 'Walter White' },
+   503→      { name: 'Aaron Paul', role: 'Jesse Pinkman' },
+   504→      { name: 'Anna Gunn', role: 'Skyler White' },
+   505→    ],
+   506→    seasons: [
+   507→      {
+   508→        seasonNumber: 1, title: 'Season 1', description: 'Walter White begins his descent into the drug trade.',
+   509→        episodes: [
+   510→          { title: 'Pilot', description: 'Walter White, a mild-mannered chemistry teacher, discovers he has cancer and turns to a life of crime.', runtime: 58, airDate: '2008-01-20', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   511→          { title: 'Cat\'s in the Bag...', description: 'Walt and Jesse attempt to cover their tracks after their first deal goes wrong.', runtime: 48, airDate: '2008-01-27', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   512→          { title: '...And the Bag\'s in the River', description: 'Walt is faced with a difficult decision as he deals with their captive.', runtime: 48, airDate: '2008-02-10', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   513→          { title: 'Cancer Man', description: 'Walt tells his family about his diagnosis while Jesse deals with his own demons.', runtime: 48, airDate: '2008-02-17', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   514→        ],
+   515→      },
+   516→      {
+   517→        seasonNumber: 2, title: 'Season 2', description: 'The operation expands as Walt and Jesse face new threats.',
+   518→        episodes: [
+   519→          { title: 'Seven Thirty-Seven', description: 'Walt calculates how much money he needs before he dies.', runtime: 47, airDate: '2009-03-08', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   520→          { title: 'Grilled', description: 'Walt and Jesse are held captive by Tuco.', runtime: 48, airDate: '2009-03-15', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   521→          { title: 'Bit by a Dead Bee', description: 'Walt and Jesse struggle to cover their tracks after escaping Tuco.', runtime: 47, airDate: '2009-03-22', servers: ytServers({ vidfast: 'HhesaQXLuRY' }) },
+   522→        ],
+   523→      },
+   524→    ],
+   525→    flags: { trending: true, popular: true, topRated: true, featured: true },
+   526→  },
+   527→  {
+   528→    title: 'Stranger Things',
+   529→    slug: 'stranger-things',
+   530→    synopsis: 'When a young boy vanishes, a small town uncovers a mystery involving secret experiments, terrifying supernatural forces, and one strange little girl.',
+   531→    poster: IMG('/49WJfeN0moxb9IPfGn8AIqMGskD.jpg'),
+   532→    backdrop: IMG('/56v2KjBlU4XaOv9rVYEQypROD7P.jpg'),
+   533→    year: 2016, rating: 8.7, votes: 18000,
+   534→    trailer: YT('b9EkMc79ZSU'),
+   535→    genres: ['Drama', 'Fantasy', 'Horror', 'Mystery'],
+   536→    categories: ['trending-now', 'new-releases'],
+   537→    cast: [
+   538→      { name: 'Millie Bobby Brown', role: 'Eleven' },
+   539→      { name: 'Finn Wolfhard', role: 'Mike Wheeler' },
+   540→      { name: 'Winona Ryder', role: 'Joyce Byers' },
+   541→    ],
+   542→    seasons: [
+   543→      {
+   544→        seasonNumber: 1, title: 'Season 1', description: 'The disappearance of Will Byers.',
+   545→        episodes: [
+   546→          { title: 'The Vanishing of Will Byers', description: 'A young boy vanishes in a small town, and a girl with powers appears.', runtime: 48, airDate: '2016-07-15', servers: ytServers({ vidfast: 'b9EkMc79ZSU' }) },
+   547→          { title: 'The Weirdo on Maple Street', description: 'The boys hide Eleven while searching for Will.', runtime: 56, airDate: '2016-07-15', servers: ytServers({ vidfast: 'b9EkMc79ZSU' }) },
+   548→          { title: 'Holly, Jolly', description: 'Joyce begins to receive strange signals from Will.', runtime: 52, airDate: '2016-07-15', servers: ytServers({ vidfast: 'b9EkMc79ZSU' }) },
+   549→        ],
+   550→      },
+   551→      {
+   552→        seasonNumber: 2, title: 'Season 2', description: 'A new threat emerges from the Upside Down.',
+   553→        episodes: [
+   554→          { title: 'MADMAX', description: 'A new player arrives in Hawkins as the kids navigate life after the Upside Down.', runtime: 49, airDate: '2017-10-27', servers: ytServers({ vidfast: 'b9EkMc79ZSU' }) },
+   555→          { title: 'Trick or Treat, Freak', description: 'Halloween brings new horrors to Hawkins.', runtime: 56, airDate: '2017-10-27', servers: ytServers({ vidfast: 'b9EkMc79ZSU' }) },
+   556→        ],
+   557→      },
+   558→    ],
+   559→    flags: { trending: true, popular: true, featured: true, recentlyAdded: true },
+   560→  },
+   561→  {
+   562→    title: 'Game of Thrones',
+   563→    slug: 'game-of-thrones',
+   564→    synopsis: 'Nine noble families fight for control over the lands of Westeros, while an ancient enemy returns after being dormant for millennia.',
+   565→    poster: IMG('/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg'),
+   566→    backdrop: IMG('/suopoADq0k8YZr4dQXcU6pToj6s.jpg'),
+   567→    year: 2011, rating: 9.2, votes: 24000,
+   568→    trailer: YT('KPLWWIOCOOQ'),
+   569→    genres: ['Action', 'Adventure', 'Drama', 'Fantasy'],
+   570→    categories: ['critically-acclaimed', 'top-rated'],
+   571→    cast: [
+   572→      { name: 'Emilia Clarke', role: 'Daenerys Targaryen' },
+   573→      { name: 'Kit Harington', role: 'Jon Snow' },
+   574→      { name: 'Peter Dinklage', role: 'Tyrion Lannister' },
+   575→    ],
+   576→    seasons: [
+   577→      {
+   578→        seasonNumber: 1, title: 'Season 1', description: 'The beginning of the struggle for the Iron Throne.',
+   579→        episodes: [
+   580→          { title: 'Winter Is Coming', description: 'Ned Stark is summoned to serve as the King\'s Hand.', runtime: 62, airDate: '2011-04-17', servers: ytServers({ vidfast: 'KPLWWIOCOOQ' }) },
+   581→          { title: 'The Kingsroad', description: 'The Starks travel to King\'s Landing while Daenerys adapts to her new life.', runtime: 56, airDate: '2011-04-24', servers: ytServers({ vidfast: 'KPLWWIOCOOQ' }) },
+   582→          { title: 'Lord Snow', description: 'Ned arrives at King\'s Landing and finds corruption.', runtime: 58, airDate: '2011-05-01', servers: ytServers({ vidfast: 'KPLWWIOCOOQ' }) },
+   583→        ],
+   584→      },
+   585→    ],
+   586→    flags: { popular: true, topRated: true, featured: true },
+   587→  },
+   588→  {
+   589→    title: 'The Last of Us',
+   590→    slug: 'the-last-of-us',
+   591→    synopsis: 'After a global pandemic destroys civilization, a hardened survivor takes charge of a 14-year-old girl who may be humanity\'s last hope.',
+   592→    poster: IMG('/uKvVjHNqB5VmOrdxqAt2F7J78ED.jpg'),
+   593→    backdrop: IMG('/uDgy6hyPd82kOHh6I95FLtLnj6p.jpg'),
+   594→    year: 2023, rating: 8.7, votes: 13000,
+   595→    trailer: YT('uLtkt8BonwM'),
+   596→    genres: ['Action', 'Adventure', 'Drama', 'Horror'],
+   597→    categories: ['new-releases', 'dark-gritty'],
+   598→    cast: [
+   599→      { name: 'Pedro Pascal', role: 'Joel' },
+   600→      { name: 'Bella Ramsey', role: 'Ellie' },
+   601→      { name: 'Anna Torv', role: 'Tess' },
+   602→    ],
+   603→    seasons: [
+   604→      {
+   605→        seasonNumber: 1, title: 'Season 1', description: 'Joel and Ellie\'s journey across a post-apocalyptic America.',
+   606→        episodes: [
+   607→          { title: 'When You\'re Lost in the Darkness', description: 'Joel and Tess are tasked with smuggling a young girl out of the quarantine zone.', runtime: 81, airDate: '2023-01-15', servers: ytServers({ vidfast: 'uLtkt8BonwM' }) },
+   608→          { title: 'Infected', description: 'Joel and Tess continue their journey with Ellie, learning the truth about her immunity.', runtime: 53, airDate: '2023-01-22', servers: ytServers({ vidfast: 'uLtkt8BonwM' }) },
+   609→          { title: 'Long Long Time', description: 'A story of love and survival as Bill and Frank navigate the apocalypse.', runtime: 76, airDate: '2023-01-29', servers: ytServers({ vidfast: 'uLtkt8BonwM' }) },
+   610→        ],
+   611→      },
+   612→    ],
+   613→    flags: { trending: true, popular: true, recentlyAdded: true, featured: true },
+   614→  },
+   615→  {
+   616→    title: 'House of the Dragon',
+   617→    slug: 'house-of-the-dragon',
+   618→    synopsis: 'The Targaryen civil war, known as the Dance of the Dragons, set 200 years before the events of Game of Thrones.',
+   619→    poster: IMG('/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg'),
+   620→    backdrop: IMG('/etj8E2o0Bud0HkONVQPjyCkIvpv.jpg'),
+   621→    year: 2022, rating: 8.4, votes: 11000,
+   622→    trailer: YT('DotnJ7tTA34'),
+   623→    genres: ['Action', 'Drama', 'Fantasy'],
+   624→    categories: ['new-releases', 'trending-now'],
+   625→    cast: [
+   626→      { name: 'Paddy Considine', role: 'King Viserys' },
+   627→      { name: 'Matt Smith', role: 'Daemon Targaryen' },
+   628→      { name: 'Emma D\'Arcy', role: 'Rhaenyra Targaryen' },
+   629→    ],
+   630→    seasons: [
+   631→      {
+   632→        seasonNumber: 1, title: 'Season 1', description: 'The seeds of the Targaryen civil war are sown.',
+   633→        episodes: [
+   634→          { title: 'The Heirs of the Dragon', description: 'King Viserys names his successor, setting off a chain of events.', runtime: 66, airDate: '2022-08-21', servers: ytServers({ vidfast: 'DotnJ7tTA34' }) },
+   635→          { title: 'The Rogue Prince', description: 'Daemon returns to King\'s Landing while Rhaenyra navigates her new role.', runtime: 61, airDate: '2022-08-28', servers: ytServers({ vidfast: 'DotnJ7tTA34' }) },
+   636→        ],
+   637→      },
+   638→    ],
+   639→    flags: { trending: true, popular: true, recentlyAdded: true },
+   640→  },
+   641→  {
+   642→    title: 'The Crown',
+   643→    slug: 'the-crown',
+   644→    synopsis: 'Follows the political rivalries and romance of Queen Elizabeth II\'s reign and the events that shaped the second half of the twentieth century.',
+   645→    poster: IMG('/1M876KPjulVwppEpldhdc8V4o68.jpg'),
+   646→    backdrop: IMG('/4QzgkBwXWelEoLp6XCm8tIcsZW9.jpg'),
+   647→    year: 2016, rating: 8.7, votes: 8000,
+   648→    trailer: YT('JWtnJjn6ng0'),
+   649→    genres: ['Drama', 'History', 'Biography'],
+   650→    categories: ['critically-acclaimed'],
+   651→    cast: [
+   652→      { name: 'Claire Foy', role: 'Queen Elizabeth II' },
+   653→      { name: 'Matt Smith', role: 'Prince Philip' },
+   654→      { name: 'Olivia Colman', role: 'Queen Elizabeth II' },
+   655→    ],
+   656→    seasons: [
+   657→      {
+   658→        seasonNumber: 1, title: 'Season 1', description: 'The early reign of Queen Elizabeth II.',
+   659→        episodes: [
+   660→          { title: 'Wolferton Splash', description: 'Princess Elizabeth marries Philip Mountbatten as King George\'s health declines.', runtime: 61, airDate: '2016-11-04', servers: ytServers({ vidfast: 'JWtnJjn6ng0' }) },
+   661→          { title: 'Hyde Park Corner', description: 'Elizabeth becomes queen while abroad in Kenya.', runtime: 57, airDate: '2016-11-04', servers: ytServers({ vidfast: 'JWtnJjn6ng0' }) },
+   662→        ],
+   663→      },
+   664→    ],
+   665→    flags: { topRated: true },
+   666→  },
+   667→  {
+   668→    title: 'Severance',
+   669→    slug: 'severance',
+   670→    synopsis: 'Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives, until a mysterious colleague appears outside of work.',
+   671→    poster: IMG('/lFf6LLrQjYldcZItzOkGmMMigP7.jpg'),
+   672→    backdrop: IMG('/aE7K6oVI3jpzM0bCixrYxLEqfM.jpg'),
+   673→    year: 2022, rating: 8.7, votes: 7000,
+   674→    trailer: YT('xEQP4VVuyrY'),
+   675→    genres: ['Drama', 'Mystery', 'Sci-Fi'],
+   676→    categories: ['sci-fi-worlds', 'new-releases'],
+   677→    cast: [
+   678→      { name: 'Adam Scott', role: 'Mark' },
+   679→      { name: 'Zach Cherry', role: 'Dylan' },
+   680→      { name: 'Britt Lower', role: 'Helly' },
+   681→    ],
+   682→    seasons: [
+   683→      {
+   684→        seasonNumber: 1, title: 'Season 1', description: 'The mystery of Lumon Industries unfolds.',
+   685→        episodes: [
+   686→          { title: 'Good News About Hell', description: 'Mark leads a team whose memories are split between work and home.', runtime: 46, airDate: '2022-02-18', servers: ytServers({ vidfast: 'xEQP4VVuyrY' }) },
+   687→          { title: 'Half Loop', description: 'Helly wakes up in the office with no memory of who she is.', runtime: 41, airDate: '2022-02-18', servers: ytServers({ vidfast: 'xEQP4VVuyrY' }) },
+   688→        ],
+   689→      },
+   690→    ],
+   691→    flags: { trending: true, topRated: true, recentlyAdded: true },
+   692→  },
+   693→]
+   694→
+   695→// ───────────────────────── Anime ─────────────────────────
+   696→const ANIME: SeriesDef[] = [
+   697→  {
+   698→    title: 'Attack on Titan',
+   699→    slug: 'attack-on-titan',
+   700→    synopsis: 'After his hometown is destroyed by the Titans, Eren Yeager vows to cleanse the earth of the giant humanoid creatures that threaten to destroy mankind.',
+   701→    poster: IMG('/hTP1DtLGFamjfu8WqjnuQdP1n4i.jpg'),
+   702→    backdrop: IMG('/8OVfcVf1OyUf0GqEvjivIaPp4bR.jpg'),
+   703→    year: 2013, rating: 9.1, votes: 16000,
+   704→    trailer: YT('MGRm4IzK1SQ'),
+   705→    genres: ['Animation', 'Action', 'Adventure', 'Drama', 'Fantasy'],
+   706→    categories: ['anime-universe', 'top-rated', 'trending-now'],
+   707→    cast: [
+   708→      { name: 'Yuki Kaji', role: 'Eren Yeager (voice)' },
+   709→      { name: 'Yui Ishikawa', role: 'Mikasa Ackerman (voice)' },
+   710→      { name: 'Marina Inoue', role: 'Armin Arlert (voice)' },
+   711→    ],
+   712→    seasons: [
+   713→      {
+   714→        seasonNumber: 1, title: 'Season 1', description: 'The fall of Shiganshina and the beginning of the fight against the Titans.',
+   715→        episodes: [
+   716→          { title: 'To You, 2000 Years From Now', description: 'The fall of Wall Maria begins as the Colossal Titan appears.', runtime: 24, airDate: '2013-04-07', servers: ytServers({ vidfast: 'MGRm4IzK1SQ' }) },
+   717→          { title: 'That Day', description: 'Eren witnesses a tragedy that sets him on his path of vengeance.', runtime: 24, airDate: '2013-04-14', servers: ytServers({ vidfast: 'MGRm4IzK1SQ' }) },
+   718→          { title: 'A Dim Light Amid Despair', description: 'The trainee cadets begin their military training.', runtime: 24, airDate: '2013-04-21', servers: ytServers({ vidfast: 'MGRm4IzK1SQ' }) },
+   719→        ],
+   720→      },
+   721→      {
+   722→        seasonNumber: 2, title: 'Season 2', description: 'The truth about the Titans within the walls begins to emerge.',
+   723→        episodes: [
+   724→          { title: 'Beast Titan', description: 'A strange new Titan appears as the Scouts face a new threat.', runtime: 24, airDate: '2017-04-01', servers: ytServers({ vidfast: 'MGRm4IzK1SQ' }) },
+   725→          { title: 'I\'m Home', description: 'Reiner and Bertholdt\'s secret is revealed.', runtime: 24, airDate: '2017-04-08', servers: ytServers({ vidfast: 'MGRm4IzK1SQ' }) },
+   726→        ],
+   727→      },
+   728→    ],
+   729→    flags: { trending: true, popular: true, topRated: true, featured: true, recentlyAdded: true },
+   730→  },
+   731→  {
+   732→    title: 'Demon Slayer',
+   733→    slug: 'demon-slayer',
+   734→    synopsis: 'A family is attacked by demons and only two members survive — Tanjiro and his sister Nezuko, who is turning into a demon slowly. Tanjiro sets out to become a demon slayer to avenge his family.',
+   735→    poster: IMG('/wrCVHdkBlBWdJUZPvnJWcBRuhSY.jpg'),
+   736→    backdrop: IMG('/nTvM4mhqNlHIvUkI1gVnW6XP7GG.jpg'),
+   737→    year: 2019, rating: 8.7, votes: 14000,
+   738→    trailer: YT('VQGCKyvzIM4'),
+   739→    genres: ['Animation', 'Action', 'Adventure', 'Fantasy'],
+   740→    categories: ['anime-universe', 'trending-now'],
+   741→    cast: [
+   742→      { name: 'Natsuki Hanae', role: 'Tanjiro Kamado (voice)' },
+   743→      { name: 'Akari Kitō', role: 'Nezuko Kamado (voice)' },
+   744→      { name: 'Hiro Shimono', role: 'Zenitsu Agatsuma (voice)' },
+   745→    ],
+   746→    seasons: [
+   747→      {
+   748→        seasonNumber: 1, title: 'Season 1', description: 'Tanjiro\'s journey to become a Demon Slayer.',
+   749→        episodes: [
+   750→          { title: 'Cruelty', description: 'Tanjiro returns home to find his family slaughtered by a demon.', runtime: 23, airDate: '2019-04-06', servers: ytServers({ vidfast: 'VQGCKyvzIM4' }) },
+   751→          { title: 'Trainer Sakonji Urokodaki', description: 'Tanjiro trains under Sakonji to become a demon slayer.', runtime: 23, airDate: '2019-04-13', servers: ytServers({ vidfast: 'VQGCKyvzIM4' }) },
+   752→          { title: 'Sabito and Makomo', description: 'Tanjiro meets two mysterious figures during his training.', runtime: 23, airDate: '2019-04-20', servers: ytServers({ vidfast: 'VQGCKyvzIM4' }) },
+   753→        ],
+   754→      },
+   755→      {
+   756→        seasonNumber: 2, title: 'Mugen Train Arc', description: 'The battle aboard the Mugen Train.',
+   757→        episodes: [
+   758→          { title: 'Flame Hashira Kyojuro Rengoku', description: 'Tanjiro joins Rengoku aboard the Mugen Train.', runtime: 23, airDate: '2021-10-10', servers: ytServers({ vidfast: 'VQGCKyvzIM4' }) },
+   759→          { title: 'Deep Sleep', description: 'The demon Enmu traps the slayers in their dreams.', runtime: 23, airDate: '2021-10-17', servers: ytServers({ vidfast: 'VQGCKyvzIM4' }) },
+   760→        ],
+   761→      },
+   762→    ],
+   763→    flags: { trending: true, popular: true, recentlyAdded: true, featured: true },
+   764→  },
+   765→  {
+   766→    title: 'Jujutsu Kaisen',
+   767→    slug: 'jujutsu-kaisen',
+   768→    synopsis: 'A boy swallows a cursed talisman — the finger of a demon — and becomes cursed himself. He enters a shaman school to be able to locate the demon\'s other body parts and exorcise himself.',
+   769→    poster: IMG('/fHpKWq9ayzSk8nSwqRuaAUemRKh.jpg'),
+   770→    backdrop: 'https://sfile.chatglm.cn/images-ppt/6154bba301a4.jpg',
+   771→    year: 2020, rating: 8.6, votes: 12000,
+   772→    trailer: YT('4A_X-Dvl0ws'),
+   773→    genres: ['Animation', 'Action', 'Adventure', 'Fantasy'],
+   774→    categories: ['anime-universe', 'new-releases'],
+   775→    cast: [
+   776→      { name: 'Junya Enoki', role: 'Yuji Itadori (voice)' },
+   777→      { name: 'Yūichi Nakamura', role: 'Satoru Gojo (voice)' },
+   778→      { name: 'Yuma Uchida', role: 'Megumi Fushiguro (voice)' },
+   779→    ],
+   780→    seasons: [
+   781→      {
+   782→        seasonNumber: 1, title: 'Season 1', description: 'Yuji Itadori enters the world of Jujutsu sorcery.',
+   783→        episodes: [
+   784→          { title: 'Ryomen Sukuna', description: 'Yuji swallows a cursed finger to save his friends.', runtime: 24, airDate: '2020-10-03', servers: ytServers({ vidfast: '4A_X-Dvl0ws' }) },
+   785→          { title: 'For Myself', description: 'Yuji begins his training at Jujutsu High.', runtime: 24, airDate: '2020-10-10', servers: ytServers({ vidfast: '4A_X-Dvl0ws' }) },
+   786→          { title: 'Girl of Steel', description: 'Nobara demonstrates her cursed technique in her first mission.', runtime: 23, airDate: '2020-10-17', servers: ytServers({ vidfast: '4A_X-Dvl0ws' }) },
+   787→        ],
+   788→      },
+   789→    ],
+   790→    flags: { trending: true, popular: true, recentlyAdded: true },
+   791→  },
+   792→  {
+   793→    title: 'One Piece',
+   794→    slug: 'one-piece',
+   795→    synopsis: 'Follows the adventures of Monkey D. Luffy and his pirate crew in order to find the greatest treasure ever left by the legendary Pirate, Gold Roger: the One Piece.',
+   796→    poster: IMG('/cMD9Ygz11zjJzAovURpO75Qg7rT.jpg'),
+   797→    backdrop: 'https://sfile.chatglm.cn/images-ppt/1a0f2a90f66e.jpg',
+   798→    year: 1999, rating: 8.9, votes: 13000,
+   799→    trailer: YT('S8_YwFLCh4U'),
+   800→    genres: ['Animation', 'Action', 'Adventure', 'Comedy', 'Fantasy'],
+   801→    categories: ['anime-universe', 'top-rated'],
+   802→    cast: [
+   803→      { name: 'Mayumi Tanaka', role: 'Monkey D. Luffy (voice)' },
+   804→      { name: 'Kazuya Nakai', role: 'Roronoa Zoro (voice)' },
+   805→      { name: 'Akemi Ōkamura', role: 'Nami (voice)' },
+   806→    ],
+   807→    seasons: [
+   808→      {
+   809→        seasonNumber: 1, title: 'East Blue', description: 'Luffy gathers his crew in the East Blue.',
+   810→        episodes: [
+   811→          { title: 'I\'m Luffy! The Man Who\'s Gonna Be King of the Pirates!', description: 'Luffy sets out to find a crew and the One Piece.', runtime: 24, airDate: '1999-10-20', servers: ytServers({ vidfast: 'S8_YwFLCh4U' }) },
+   812→          { title: 'Enter the Great Swordsman! Pirate Hunter Roronoa Zoro', description: 'Luffy recruits the swordsman Zoro to his crew.', runtime: 24, airDate: '1999-11-17', servers: ytServers({ vidfast: 'S8_YwFLCh4U' }) },
+   813→        ],
+   814→      },
+   815→    ],
+   816→    flags: { popular: true, topRated: true, featured: true },
+   817→  },
+   818→  {
+   819→    title: 'Chainsaw Man',
+   820→    slug: 'chainsaw-man',
+   821→    synopsis: 'Following a betrayal, a young man left for dead is reborn as a powerful devil-human hybrid after merging with his pet devil and is soon enlisted by an organization to fight evil.',
+   822→    poster: IMG('/npdB6eFzizki0WaZ1OvKcJrWe97.jpg'),
+   823→    backdrop: IMG('/anr8KqjjjsP3jjjMgrYAyChDFmA.jpg'),
+   824→    year: 2022, rating: 8.5, votes: 9000,
+   825→    trailer: YT('q15CRdE5Bv0'),
+   826→    genres: ['Animation', 'Action', 'Adventure', 'Horror'],
+   827→    categories: ['anime-universe', 'new-releases'],
+   828→    cast: [
+   829→      { name: 'Kikunosuke Toya', role: 'Denji (voice)' },
+   830→      { name: 'Tomori Kusunoki', role: 'Makima (voice)' },
+   831→      { name: 'Shogo Sakata', role: 'Aki Hayakawa (voice)' },
+   832→    ],
+   833→    seasons: [
+   834→      {
+   835→        seasonNumber: 1, title: 'Season 1', description: 'Denji becomes Chainsaw Man.',
+   836→        episodes: [
+   837→          { title: 'Dog & Chainsaw', description: 'Denji merges with his devil dog Pochita to become Chainsaw Man.', runtime: 24, airDate: '2022-10-11', servers: ytServers({ vidfast: 'q15CRdE5Bv0' }) },
+   838→          { title: 'Arrival in Tokyo', description: 'Denji adjusts to his new life as a Devil Hunter.', runtime: 24, airDate: '2022-10-18', servers: ytServers({ vidfast: 'q15CRdE5Bv0' }) },
+   839→        ],
+   840→      },
+   841→    ],
+   842→    flags: { trending: true, recentlyAdded: true },
+   843→  },
+   844→  {
+   845→    title: 'Death Note',
+   846→    slug: 'death-note',
+   847→    synopsis: 'An intelligent high school student goes on a secret crusade to eliminate criminals from the world after discovering a notebook capable of killing anyone whose name is written into it.',
+   848→    poster: 'https://sfile.chatglm.cn/images-ppt/950b8f43da41.jpg',
+   849→    backdrop: 'https://sfile.chatglm.cn/images-ppt/8f07f22d876b.jpg',
+   850→    year: 2006, rating: 9.0, votes: 15000,
+   851→    trailer: YT('NlJZ-YgAt-c'),
+   852→    genres: ['Animation', 'Crime', 'Drama', 'Mystery', 'Thriller'],
+   853→    categories: ['anime-universe', 'critically-acclaimed', 'top-rated'],
+   854→    cast: [
+   855→      { name: 'Mamoru Miyano', role: 'Light Yagami (voice)' },
+   856→      { name: 'Kappei Yamaguchi', role: 'L (voice)' },
+   857→      { name: 'Aya Hirano', role: 'Misa Amane (voice)' },
+   858→    ],
+   859→    seasons: [
+   860→      {
+   861→        seasonNumber: 1, title: 'Season 1', description: 'Light Yagami vs L.',
+   862→        episodes: [
+   863→          { title: 'Rebirth', description: 'Light Yagami discovers the Death Note and begins his crusade.', runtime: 23, airDate: '2006-10-04', servers: ytServers({ vidfast: 'NlJZ-YgAt-c' }) },
+   864→          { title: 'Confrontation', description: 'L begins to close in on Kira\'s identity.', runtime: 23, airDate: '2006-10-11', servers: ytServers({ vidfast: 'NlJZ-YgAt-c' }) },
+   865→        ],
+   866→      },
+   867→    ],
+   868→    flags: { topRated: true, popular: true },
+   869→  },
+   870→]
+   871→
+   872→function slugify(s: string) {
+   873→  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+   874→}
+   875→
+   876→
+   877→// ───────────────────────────── helpers ─────────────────────────────
+   878→// Every Supabase insert in this seed is checked for errors and logged.
+   879→// `logInsert` returns the inserted row or null, and prints a clear error
+   880→// with the exact Supabase message + the offending payload when it fails.
+   881→
+   882→interface InsertResult {
+   883→  data: any
+   884→  error: any
+   885→}
+   886→
+   887→async function logInsert(
+   888→  supabase: ReturnType<typeof createAdminSupabaseClient>,
+   889→  label: string,
+   890→  table: string,
+   891→  row: Record<string, any>,
+   892→  select = 'id',
+   893→  onConflict?: string,
+   894→): Promise<any | null> {
+   895→  // When onConflict is provided, use upsert (idempotent — safe to re-run).
+   896→  // Otherwise plain insert.
+   897→  const query = onConflict
+   898→    ? supabase.from(table).upsert(row, { onConflict, ignoreDuplicates: false })
+   899→    : supabase.from(table).insert(row)
+   900→  const res: InsertResult = await query.select(select).single()
+   901→  if (res.error) {
+   902→    console.error(`✗ ${label} ${onConflict ? 'upsert' : 'insert'} failed [${table}]`)
+   903→    console.error(`  code:    ${res.error.code ?? '(none)'}`)
+   904→    console.error(`  message: ${res.error.message}`)
+   905→    if (res.error.details) console.error(`  details: ${res.error.details}`)
+   906→    if (res.error.hint) console.error(`  hint:    ${res.error.hint}`)
+   907→    console.error(`  payload: ${JSON.stringify(row).slice(0, 400)}`)
+   908→    return null
+   909→  }
+   910→  if (!res.data) {
+   911→    console.error(`✗ ${label} ${onConflict ? 'upsert' : 'insert'} returned no data [${table}]`)
+   912→    return null
+   913→  }
+   914→  return res.data
+   915→}
+   916→
+   917→async function logInsertMany(
+   918→  supabase: ReturnType<typeof createAdminSupabaseClient>,
+   919→  label: string,
+   920→  table: string,
+   921→  rows: Record<string, any>[],
+   922→): Promise<boolean> {
+   923→  if (rows.length === 0) return true
+   924→  const res: InsertResult = await supabase.from(table).insert(rows)
+   925→  if (res.error) {
+   926→    console.error(`✗ ${label} batch insert failed [${table}] — ${rows.length} rows`)
+   927→    console.error(`  code:    ${res.error.code ?? '(none)'}`)
+   928→    console.error(`  message: ${res.error.message}`)
+   929→    if (res.error.details) console.error(`  details: ${res.error.details}`)
+   930→    if (res.error.hint) console.error(`  hint:    ${res.error.hint}`)
+   931→    console.error(`  first row: ${JSON.stringify(rows[0]).slice(0, 300)}`)
+   932→    return false
+   933→  }
+   934→  return true
+   935→}
+   936→
+   937→async function main() {
+   938→  console.log('Seeding Gstream database (Supabase)...')
+   939→
+   940→  // ── Verify Supabase is configured BEFORE creating any client ──
+   941→  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+   942→  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+   943→  if (!url || !key) {
+   944→    console.error('✗ Supabase env vars missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local')
+   945→    process.exit(1)
+   946→  }
+   947→  console.log(`Supabase URL: ${url}`)
+   948→  const supabase = createAdminSupabaseClient()
+   949→
+   950→  const SENTINEL = '00000000-0000-0000-0000-000000000000'
+   951→  const tables = [
+   952→    'WatchProgress', 'WatchHistory', 'MyList', 'FeaturedBanner',
+   953→    'EpisodeServer', 'MovieServer', 'Episode', 'Season',
+   954→    'Movie_genres', 'Movie_categories', 'Series_genres', 'Series_categories',
+   955→    'Movie', 'Series', 'StreamingServer', 'Genre', 'Category',
+   956→  ]
+   957→  console.log('─ Cleaning existing rows...')
+   958→  for (const t of tables) {
+   959→    const { error } = await supabase.from(t).delete().neq('id', SENTINEL)
+   960→    if (error) console.warn(`  ⚠ delete from ${t}: ${error.message}`)
+   961→  }
+   962→  const { error: userDelErr } = await supabase.from('User').delete().neq('id', SENTINEL)
+   963→  if (userDelErr) console.warn(`  ⚠ delete from User: ${userDelErr.message}`)
+   964→
+   965→  console.log('─ Inserting genres...')
+   966→  const genreMap = new Map<string, string>()
+   967→  let genreOk = 0
+   968→  for (const name of GENRES) {
+   969→    const row = await logInsert(supabase, 'Genre', 'Genre', { name, slug: slugify(name) }, 'id', 'slug')
+   970→    if (row) { genreMap.set(name, row.id); genreOk++ }
+   971→  }
+   972→  console.log(`  ✓ ${genreOk}/${GENRES.length} genres inserted`)
+   973→
+   974→  console.log('─ Inserting categories...')
+   975→  const catMap = new Map<string, string>()
+   976→  let catOk = 0
+   977→  for (const c of CATEGORIES) {
+   978→    const row = await logInsert(supabase, 'Category', 'Category', { name: c.name, slug: c.slug, icon: c.icon }, 'id', 'slug')
+   979→    if (row) { catMap.set(c.slug, row.id); catOk++ }
+   980→  }
+   981→  console.log(`  ✓ ${catOk}/${CATEGORIES.length} categories inserted`)
+   982→
+   983→  console.log('─ Inserting streaming servers...')
+   984→  const serverMap = new Map<string, string>()
+   985→  let srvOk = 0
+   986→  for (const s of SERVERS) {
+   987→    const row = await logInsert(supabase, 'StreamingServer', 'StreamingServer', {
+   988→      name: s.name, slug: s.slug, priority: s.priority, status: s.status,
+   989→    }, 'id', 'slug')
+   990→    if (row) { serverMap.set(s.name, row.id); srvOk++ }
+   991→  }
+   992→  console.log(`  ✓ ${srvOk}/${SERVERS.length} servers inserted`)
+   993→
+   994→  console.log('─ Creating / reusing auth users...')
+   995→  let adminUserId: string | null = null
+   996→  let demoUserId: string | null = null
+   997→
+   998→  // Idempotent: if the user already exists (from a previous run), reuse it
+   999→  // instead of failing. We try createUser first; on "already registered"
+  1000→  // we fall back to listUsersByEmail to fetch the existing ID.
+  1001→  async function createOrReuseUser(email: string, password: string, name: string): Promise<string | null> {
+  1002→    const { data, error } = await supabase.auth.admin.createUser({
+  1003→      email, password, email_confirm: true, user_metadata: { name },
+  1004→    })
+  1005→    if (!error && data.user) {
+  1006→      console.log(`  ✓ created ${email}: ${data.user.id}`)
+  1007→      return data.user.id
+  1008→    }
+  1009→    // User already exists — look them up by email
+  1010→    const { data: list, error: listErr } = await supabase.auth.admin.listUsers()
+  1011→    if (listErr) {
+  1012→      console.error(`  ✗ failed to list users for ${email}:`, listErr.message)
+  1013→      return null
+  1014→    }
+  1015→    const existing = (list.users ?? []).find((u: any) => u.email === email)
+  1016→    if (existing) {
+  1017→      console.log(`  ↻ reused ${email}: ${existing.id}`)
+  1018→      return existing.id
+  1019→    }
+  1020→    console.error(`  ✗ could not create or find ${email}:`, error?.message ?? 'unknown')
+  1021→    return null
+  1022→  }
+  1023→
+  1024→  adminUserId = await createOrReuseUser('admin@gstream.com', 'admin123', 'Administrator')
+  1025→  demoUserId = await createOrReuseUser('user@gstream.com', 'user123', 'Demo Viewer')
+  1026→
+  1027→  if (adminUserId) {
+  1028→    const { error: promoErr } = await supabase
+  1029→      .from('User')
+  1030→      .update({ role: 'admin' })
+  1031→      .eq('id', adminUserId)
+  1032→    if (promoErr) console.warn(`  ⚠ admin role promotion: ${promoErr.message}`)
+  1033→    else console.log(`  ✓ admin role promoted`)
+  1034→  }
+  1035→  console.log('Admin:', adminUserId ? 'admin@gstream.com' : '(skipped)', '| Demo user:', demoUserId ? 'user@gstream.com' : '(skipped)')
+  1036→
+  1037→  console.log('─ Inserting movies...')
+  1038→  let movieOk = 0
+  1039→  for (const m of MOVIES) {
+  1040→    const created = await logInsert(supabase, 'Movie', 'Movie', {
+  1041→      title: m.title, slug: m.slug, synopsis: m.synopsis,
+  1042→      posterUrl: m.poster, backdropUrl: m.backdrop, logoUrl: m.logo ?? null,
+  1043→      releaseYear: m.year, runtime: m.runtime, rating: m.rating, voteCount: m.votes,
+  1044→      trailerUrl: m.trailer ?? null, type: 'movie',
+  1045→      featured: m.flags?.featured ?? false, trending: m.flags?.trending ?? false,
+  1046→      popular: m.flags?.popular ?? false, topRated: m.flags?.topRated ?? false,
+  1047→      recentlyAdded: m.flags?.recentlyAdded ?? true, recentlyUpdated: true,
+  1048→      status: 'published', cast: JSON.stringify(m.cast),
+  1049→    }, 'id', 'slug')
+  1050→    if (!created) continue
+  1051→    movieOk++
+  1052→
+  1053→    const gRows = m.genres
+  1054→      .map((n) => genreMap.get(n))
+  1055→      .filter((gid): gid is string => Boolean(gid))
+  1056→      .map((gid) => ({ movieId: created.id, genreId: gid }))
+  1057→    await logInsertMany(supabase, 'Movie_genres', 'Movie_genres', gRows)
+  1058→    const cRows = m.categories
+  1059→      .map((s) => catMap.get(s))
+  1060→      .filter((cid): cid is string => Boolean(cid))
+  1061→      .map((cid) => ({ movieId: created.id, categoryId: cid }))
+  1062→    await logInsertMany(supabase, 'Movie_categories', 'Movie_categories', cRows)
+  1063→    for (const sv of m.servers) {
+  1064→      const sid = serverMap.get(sv.name)
+  1065→      if (!sid) { console.warn(`  ⚠ server "${sv.name}" not found for movie "${m.title}"`); continue }
+  1066→      await logInsert(supabase, 'MovieServer', 'MovieServer', {
+  1067→        movieId: created.id, serverId: sid, embedUrl: sv.embedUrl,
+  1068→        quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
+  1069→      })
+  1070→    }
+  1071→  }
+  1072→  console.log(`✓ ${movieOk}/${MOVIES.length} movies inserted`)
+  1073→
+  1074→  console.log('─ Inserting series + anime...')
+  1075→  let seriesOk = 0
+  1076→  const seriesTotal = SERIES.length + ANIME.length
+  1077→  for (const s of [...SERIES, ...ANIME]) {
+  1078→    const isAnime = ANIME.includes(s)
+  1079→    const payload: Record<string, any> = {
+  1080→      title: s.title, slug: s.slug, synopsis: s.synopsis,
+  1081→      posterUrl: s.poster, backdropUrl: s.backdrop, logoUrl: s.logo ?? null,
+  1082→      releaseYear: s.year, rating: s.rating, voteCount: s.votes,
+  1083→      trailerUrl: s.trailer ?? null, type: isAnime ? 'anime' : 'series',
+  1084→      featured: s.flags?.featured ?? false, trending: s.flags?.trending ?? false,
+  1085→      popular: s.flags?.popular ?? false, topRated: s.flags?.topRated ?? false,
+  1086→      recentlyAdded: s.flags?.recentlyAdded ?? true, recentlyUpdated: true,
+  1087→      status: 'published', cast: JSON.stringify(s.cast),
+  1088→    }
+  1089→    let created = await logInsert(supabase, isAnime ? 'Anime' : 'Series', 'Series', payload, 'id', 'slug')
+  1090→
+  1091→    // ── Auto-recovery: retry with minimal payload on schema mismatch
+  1092→    if (!created) {
+  1093→      console.warn(`  ↻ Retrying "${s.title}" with minimal payload (schema auto-fix)...`)
+  1094→      const minimal: Record<string, any> = {
+  1095→        title: s.title,
+  1096→        slug: s.slug,
+  1097→        synopsis: s.synopsis || '',
+  1098→        posterUrl: s.poster || '',
+  1099→        backdropUrl: s.backdrop || '',
+  1100→        releaseYear: s.year,
+  1101→        type: isAnime ? 'anime' : 'series',
+  1102→        status: 'published',
+  1103→        cast: JSON.stringify(s.cast || []),
+  1104→      }
+  1105→      created = await logInsert(supabase, `${isAnime ? 'Anime' : 'Series'} (retry)`, 'Series', minimal, 'id', 'slug')
+  1106→    }
+  1107→    if (!created) {
+  1108→      console.error(`  ✗ Skipping "${s.title}" — insert failed after retry`)
+  1109→      continue
+  1110→    }
+  1111→    seriesOk++
+  1112→
+  1113→    const gRows = s.genres
+  1114→      .map((n) => genreMap.get(n))
+  1115→      .filter((gid): gid is string => Boolean(gid))
+  1116→      .map((gid) => ({ seriesId: created.id, genreId: gid }))
+  1117→    await logInsertMany(supabase, 'Series_genres', 'Series_genres', gRows)
+  1118→    const cRows = s.categories
+  1119→      .map((c) => catMap.get(c))
+  1120→      .filter((cid): cid is string => Boolean(cid))
+  1121→      .map((cid) => ({ seriesId: created.id, categoryId: cid }))
+  1122→    await logInsertMany(supabase, 'Series_categories', 'Series_categories', cRows)
+  1123→
+  1124→    for (const season of s.seasons) {
+  1125→      const createdSeason = await logInsert(supabase, 'Season', 'Season', {
+  1126→        seriesId: created.id, seasonNumber: season.seasonNumber, title: season.title,
+  1127→        description: season.description ?? null, posterUrl: season.poster ?? null,
+  1128→        episodeCount: season.episodes.length,
+  1129→      })
+  1130→      if (!createdSeason) continue
+  1131→
+  1132→      for (const [epIdx, ep] of season.episodes.entries()) {
+  1133→        const createdEp = await logInsert(supabase, 'Episode', 'Episode', {
+  1134→          seasonId: createdSeason.id, episodeNumber: epIdx + 1, title: ep.title,
+  1135→          description: ep.description, thumbnailUrl: ep.thumbnail ?? created.backdropUrl,
+  1136→          runtime: ep.runtime, airDate: ep.airDate ?? null,
+  1137→        })
+  1138→        if (!createdEp) continue
+  1139→
+  1140→        for (const sv of ep.servers) {
+  1141→          const sid = serverMap.get(sv.name)
+  1142→          if (!sid) { console.warn(`  ⚠ server "${sv.name}" not found for episode "${ep.title}"`); continue }
+  1143→          await logInsert(supabase, 'EpisodeServer', 'EpisodeServer', {
+  1144→            episodeId: createdEp.id, serverId: sid, embedUrl: sv.embedUrl,
+  1145→            quality: sv.quality ?? 'Auto', priority: sv.priority ?? 0, status: 'active',
+  1146→          })
+  1147→        }
+  1148→      }
+  1149→    }
+  1150→  }
+  1151→  console.log(`✓ ${seriesOk}/${seriesTotal} series/anime inserted`)
+  1152→
+  1153→  console.log('─ Inserting featured banners...')
+  1154→  const { data: featuredMovies, error: fmErr } = await supabase
+  1155→    .from('Movie')
+  1156→    .select('id, title, synopsis, backdropUrl, logoUrl')
+  1157→    .eq('featured', true)
+  1158→    .limit(3)
+  1159→  if (fmErr) console.warn(`  ⚠ fetch featured movies: ${fmErr.message}`)
+  1160→  const { data: featuredSeries, error: fsErr } = await supabase
+  1161→    .from('Series')
+  1162→    .select('id, title, synopsis, backdropUrl, logoUrl')
+  1163→    .eq('featured', true)
+  1164→    .limit(3)
+  1165→  if (fsErr) console.warn(`  ⚠ fetch featured series: ${fsErr.message}`)
+  1166→  let order = 0
+  1167→  for (const fm of (featuredMovies ?? []).slice(0, 2)) {
+  1168→    await logInsert(supabase, 'FeaturedBanner (movie)', 'FeaturedBanner', {
+  1169→      title: fm.title, description: (fm.synopsis ?? '').slice(0, 180) + '...',
+  1170→      imageUrl: fm.backdropUrl, logoUrl: fm.logoUrl, order: order++, active: true, movieId: fm.id,
+  1171→    })
+  1172→  }
+  1173→  for (const fs of (featuredSeries ?? []).slice(0, 2)) {
+  1174→    await logInsert(supabase, 'FeaturedBanner (series)', 'FeaturedBanner', {
+  1175→      title: fs.title, description: (fs.synopsis ?? '').slice(0, 180) + '...',
+  1176→      imageUrl: fs.backdropUrl, logoUrl: fs.logoUrl, order: order++, active: true, seriesId: fs.id,
+  1177→    })
+  1178→  }
+  1179→  console.log(`✓ ${order} featured banners inserted`)
+  1180→
+  1181→  // ── Final summary ──
+  1182→  console.log('')
+  1183→  console.log('═══════════════════════════════════════════')
+  1184→  console.log('  SEED SUMMARY')
+  1185→  console.log('═══════════════════════════════════════════')
+  1186→  console.log(`  ✓ Genres:            ${genreOk}/${GENRES.length}`)
+  1187→  console.log(`  ✓ Categories:        ${catOk}/${CATEGORIES.length}`)
+  1188→  console.log(`  ✓ Streaming Servers: ${srvOk}/${SERVERS.length}`)
+  1189→  console.log(`  ✓ Movies:            ${movieOk}/${MOVIES.length}`)
+  1190→  console.log(`  ✓ Series + Anime:    ${seriesOk}/${SERIES.length + ANIME.length}  (${SERIES.length} series, ${ANIME.length} anime)`)
+  1191→  console.log(`  ✓ Featured Banners:  ${order}`)
+  1192→  console.log(`  ✓ Admin user:        ${adminUserId ? 'admin@gstream.com' : '(skipped)'}`)
+  1193→  console.log(`  ✓ Demo user:         ${demoUserId ? 'user@gstream.com' : '(skipped)'}`)
+  1194→  console.log('═══════════════════════════════════════════')
+  1195→  console.log('  Admin login:  admin@gstream.com / admin123')
+  1196→  console.log('  User login:   user@gstream.com / user123')
+  1197→  console.log('═══════════════════════════════════════════')
+  1198→}
+  1199→
+  1200→main().catch((e) => {
+  1201→  console.error('Seed script crashed:')
+  1202→  console.error(e)
+  1203→  process.exit(1)
+  1204→})
+  1205→
