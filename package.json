@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:seed": "tsx --env-file=.env scripts/seed.ts",
     "supabase:setup": "echo 'Run supabase/schema.sql in the Supabase SQL Editor (Dashboard → SQL → New query)'"
   },
   "dependencies": {
