@@ -26,26 +26,6 @@ const FOOTER_LINKS = [
       { label: 'Create Account', href: '/register' },
     ],
   },
-  {
-    title: 'Company',
-    links: [
-      { label: 'About Gstream', href: '/' },
-      { label: 'Careers', href: '/' },
-      { label: 'Press', href: '/' },
-      { label: 'Investors', href: '/' },
-      { label: 'Contact', href: '/' },
-    ],
-  },
-  {
-    title: 'Legal',
-    links: [
-      { label: 'Terms of Service', href: '/' },
-      { label: 'Privacy Policy', href: '/' },
-      { label: 'Cookie Policy', href: '/' },
-      { label: 'Content Guidelines', href: '/' },
-      { label: 'DMCA', href: '/' },
-    ],
-  },
 ]
 
 export function SiteFooter() {
@@ -57,7 +37,7 @@ export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-border/60 bg-card/40">
       <div className="mx-auto max-w-[1600px] px-4 py-12 sm:px-6 lg:px-10">
-        <div className="grid gap-10 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
+        <div className="grid gap-10 lg:grid-cols-[1.5fr_repeat(2,1fr)]">
           <div>
             <BrandMark href="/" />
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">
@@ -114,6 +94,10 @@ export function SiteFooter() {
             </span>
           </div>
         </div>
+
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          Disclaimer: Gstream operates as a digital content aggregator and does not host, store, or upload any proprietary video files on its own servers. All streaming media is indexed from non-affiliated, third-party hosting services.
+        </p>
       </div>
     </footer>
   )

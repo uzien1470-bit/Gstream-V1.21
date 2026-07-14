@@ -15,6 +15,11 @@ interface SmartImageProps {
 /**
  * Image component with graceful fallback to a cinematic gradient
  * with the title initial if the source fails to load.
+ *
+ * Uses the `key` prop to force a fresh <img> element whenever `src`
+ * changes (so onLoad fires cleanly), plus a ref callback that detects
+ * cached images that completed before React hydrated — preventing the
+ * "stuck on loading shimmer forever" bug.
  */
 export function SmartImage({
   src,
@@ -26,14 +31,6 @@ export function SmartImage({
 }: SmartImageProps) {
   const [error, setError] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [prevSrc, setPrevSrc] = useState(src)
-
-  // Reset when src changes (recommended pattern: set state during render)
-  if (src !== prevSrc) {
-    setPrevSrc(src)
-    setError(false)
-    setLoaded(false)
-  }
 
   if (error || !src) {
     return (
@@ -53,14 +50,22 @@ export function SmartImage({
   return (
     <div className={cn('relative overflow-hidden bg-secondary', className)}>
       {!loaded && <div className="absolute inset-0 shimmer" />}
-      { }
       <img
+        key={src}
         src={src}
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
         sizes={sizes}
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
+        ref={(img) => {
+          // If the image was already complete (browser cache), set loaded.
+          // This runs after render + hydration, catching cached images
+          // whose onLoad fired before React attached the handler.
+          if (img && img.complete && img.naturalWidth > 0) {
+            setLoaded(true)
+          }
+        }}
         className={cn(
           'h-full w-full object-cover transition-opacity duration-500',
           loaded ? 'opacity-100' : 'opacity-0',

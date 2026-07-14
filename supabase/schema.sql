@@ -376,9 +376,7 @@ create policy "thumbnails_admin_delete" on storage.objects for delete
 alter table public."User" enable row level security;
 drop policy if exists "users_self_read" on public."User";
 create policy "users_self_read" on public."User" for select
-  using (auth.uid() = id or exists (
-    select 1 from public."User" u where u.id = auth.uid() and u.role = 'admin'
-  ));
+  using (auth.uid() = id);
 drop policy if exists "users_self_update" on public."User";
 create policy "users_self_update" on public."User" for update
   using (auth.uid() = id);

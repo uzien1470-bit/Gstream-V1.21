@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase'
 
 export interface AuthUser {
   id: string
@@ -12,10 +12,10 @@ export interface AuthUser {
 /**
  * Returns the current authenticated user's profile or null.
  * Uses Supabase Auth for the session and the `public."User"` profile table
- * (read via the same Supabase client) for role/status/avatar.
+ * for role/status/avatar.
  *
- * Gracefully returns null when Supabase is unreachable/unconfigured so the
- * public site keeps loading.
+ * If the anon client can't read the profile (RLS recursion / missing row),
+ * falls back to the admin (service-role) client which bypasses RLS.
  */
 export async function getSessionUser(): Promise<AuthUser | null> {
   try {
@@ -25,19 +25,29 @@ export async function getSessionUser(): Promise<AuthUser | null> {
     } = await supabase.auth.getUser()
     if (!user) return null
 
-    const { data: profile, error: profileErr } = await supabase
+    // Try reading the profile with the anon (RLS-enforced) client first.
+    let { data: profile, error: profileErr } = await supabase
       .from('User')
       .select('id, email, name, role, status, avatarUrl')
       .eq('id', user.id)
       .single()
-    if (profileErr) {
-      // PGRST116 = no rows found (user has auth session but no profile row yet,
-      // e.g. trigger hasn't fired). Treat as logged-out. Log other errors.
-      if (profileErr.code !== 'PGRST116') {
-        console.error('[auth] profile fetch failed:', profileErr.message)
+
+    // Fallback: if the anon client failed (RLS recursion, missing row, etc.),
+    // use the admin (service-role) client which bypasses RLS.
+    if (profileErr && !profile) {
+      const admin = createAdminSupabaseClient()
+      const { data: adminProfile, error: adminErr } = await admin
+        .from('User')
+        .select('id, email, name, role, status, avatarUrl')
+        .eq('id', user.id)
+        .single()
+      if (adminErr) {
+        console.error('[auth] profile fetch failed (admin fallback):', adminErr.message)
+        return null
       }
-      return null
+      profile = adminProfile
     }
+
     if (!profile) return null
     if ((profile as any).status === 'suspended') return null
 

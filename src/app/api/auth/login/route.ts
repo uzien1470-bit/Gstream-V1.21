@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -28,16 +28,46 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Fetch profile to check status
-  const { data: profile } = await supabase
+  // Fetch profile using the anon client (RLS allows self-read)
+  let { data: profile, error: profileErr } = await supabase
     .from('User')
     .select('id, email, name, role, status, avatarUrl')
     .eq('id', data.user.id)
     .single()
+
+  // Auto-create profile if missing. Use the admin (service-role) client
+  // because RLS may block inserts and the auth trigger may not have fired.
+  if (!profile && profileErr) {
+    const admin = createAdminSupabaseClient()
+    const { data: newProfile, error: createErr } = await admin
+      .from('User')
+      .upsert({
+        id: data.user.id,
+        email: data.user.email ?? email,
+        name: (data.user.user_metadata?.name as string) || email.split('@')[0],
+        role: 'user',
+        status: 'active',
+      }, { onConflict: 'id' })
+      .select('id, email, name, role, status, avatarUrl')
+      .single()
+
+    if (createErr) {
+      console.error('[auth/login] profile auto-create failed:', createErr.message)
+      return NextResponse.json(
+        { error: 'Failed to create user profile. Please contact support.' },
+        { status: 500 },
+      )
+    }
+    profile = newProfile
+  }
+
   if (!profile) {
+    console.error('[auth/login] profile fetch failed:', profileErr?.message)
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   }
-  if ((profile as any).status === 'suspended') {
+
+  const p = profile as any
+  if (p.status === 'suspended') {
     await supabase.auth.signOut()
     return NextResponse.json(
       { error: 'Account suspended. Contact support.' },
@@ -45,7 +75,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const p = profile as any
   return NextResponse.json({
     user: {
       id: p.id,

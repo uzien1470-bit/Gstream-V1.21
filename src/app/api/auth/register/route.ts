@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -25,6 +25,23 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+
+  // Auto-create the profile row using the admin (service-role) client.
+  // The auth trigger (handle_new_user) should do this, but we do it here
+  // too as a fallback in case the trigger didn't fire or RLS blocked it.
+  if (data.user) {
+    const admin = createAdminSupabaseClient()
+    const { error: profileErr } = await admin.from('User').upsert({
+      id: data.user.id,
+      email: data.user.email ?? email,
+      name: name || email.split('@')[0],
+      role: 'user',
+      status: 'active',
+    }, { onConflict: 'id' })
+    if (profileErr) {
+      console.warn('[auth/register] profile upsert:', profileErr.message)
+    }
   }
 
   return NextResponse.json({
