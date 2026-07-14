@@ -8,7 +8,7 @@ A production-ready streaming service built on **Next.js 16**, **Supabase** (Post
 
 ```bash
 # 1. Install dependencies
-bun install
+npm install
 
 # 2. Copy environment variables
 cp .env.example .env.local
@@ -17,10 +17,10 @@ cp .env.example .env.local
 # 3. Run the SQL schema in Supabase (see Step 3 below)
 
 # 4. Seed demo content
-bun run db:seed
+npm run db:seed
 
 # 5. Start the dev server
-bun run dev
+npm run dev
 ```
 
 The app runs at `http://localhost:3000`.
@@ -94,7 +94,7 @@ If you need to verify the buckets exist, check **Supabase Dashboard → Storage*
 ## Step 5 — Seed Demo Content
 
 ```bash
-bun run db:seed
+npm run db:seed
 ```
 
 This creates:
@@ -207,7 +207,7 @@ After seeding:
 ## Troubleshooting
 
 **Pages show empty content**
-→ Supabase env vars are not set or the schema hasn't been imported. Run `supabase/schema.sql` in the SQL Editor and run `bun run db:seed`.
+→ Supabase env vars are not set or the schema hasn't been imported. Run `supabase/schema.sql` in the SQL Editor and run `npm run db:seed`.
 
 **Admin dashboard shows a warning banner**
 → Supabase is not configured. Set the 3 environment variables and restart.
