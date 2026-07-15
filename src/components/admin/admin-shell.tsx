@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Film, Tv, Sparkles, FolderTree, PlayCircle,
-  Tag, Folder, Image, Server, Users, LogOut, Menu, X, Shield, Home,
+  Tag, Folder, Image, Server, Users, LogOut, Menu, X, Shield, Home, UserCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ const NAV = [
   { href: '/admin/movies', label: 'Movies', icon: Film },
   { href: '/admin/tv-series', label: 'TV Series', icon: Tv },
   { href: '/admin/anime', label: 'Anime', icon: Sparkles },
+  { href: '/admin/actors', label: 'Actors', icon: UserCircle },
   { href: '/admin/seasons', label: 'Seasons', icon: FolderTree },
   { href: '/admin/episodes', label: 'Episodes', icon: PlayCircle },
   { href: '/admin/genres', label: 'Genres', icon: Tag },

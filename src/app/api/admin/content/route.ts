@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
   const genreIds: string[] = Array.isArray(data.genreIds) ? data.genreIds : []
   const categoryIds: string[] = Array.isArray(data.categoryIds) ? data.categoryIds : []
   const servers: any[] = Array.isArray(data.servers) ? data.servers : []
+  const actorLinks: any[] = Array.isArray(data.actorLinks) ? data.actorLinks : []
   const cast = data.cast ? (typeof data.cast === 'string' ? data.cast : JSON.stringify(data.cast)) : '[]'
 
   const row: any = {
@@ -153,6 +154,19 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Failed to link server: ' + sInsErr.message }, { status: 500 })
         }
       }
+      // Actor links (MovieActor junction)
+      if (actorLinks.length > 0) {
+        const aRows = actorLinks.map((a) => ({
+          movieId: created.id,
+          actorId: a.actorId,
+          characterName: a.characterName ?? null,
+          displayOrder: Number(a.displayOrder) || 0,
+        }))
+        const { error: aInsErr } = await supabase.from('MovieActor').insert(aRows)
+        if (aInsErr) {
+          console.error('[admin/content POST movie] MovieActor insert:', aInsErr.message)
+        }
+      }
       return NextResponse.json({ item: created })
     } else {
       row.type = type === 'anime' ? 'anime' : 'series'
@@ -182,6 +196,19 @@ export async function POST(req: NextRequest) {
         if (cInsErr) {
           console.error('[admin/content POST series] Series_categories insert:', cInsErr.message)
           return NextResponse.json({ error: 'Failed to link categories: ' + cInsErr.message }, { status: 500 })
+        }
+      }
+      // Actor links (SeriesActor junction)
+      if (actorLinks.length > 0) {
+        const aRows = actorLinks.map((a) => ({
+          seriesId: created.id,
+          actorId: a.actorId,
+          characterName: a.characterName ?? null,
+          displayOrder: Number(a.displayOrder) || 0,
+        }))
+        const { error: aInsErr } = await supabase.from('SeriesActor').insert(aRows)
+        if (aInsErr) {
+          console.error('[admin/content POST series] SeriesActor insert:', aInsErr.message)
         }
       }
       return NextResponse.json({ item: created })

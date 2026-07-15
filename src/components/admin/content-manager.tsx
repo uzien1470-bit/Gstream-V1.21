@@ -52,7 +52,15 @@ const EMPTY_FORM = {
   releaseYear: new Date().getFullYear(), rating: 7, voteCount: 0, trailerUrl: '',
   runtime: 120, featured: false, trending: false, popular: false, topRated: false,
   status: 'published', genreIds: [] as string[], categoryIds: [] as string[],
-  servers: [] as ServerRow[], cast: '[]',
+  servers: [] as ServerRow[], actorLinks: [] as ActorLink[],
+}
+
+interface ActorLink {
+  actorId: string
+  actorName: string
+  actorPhoto?: string | null
+  characterName: string
+  displayOrder: number
 }
 
 export function ContentManager({ type }: { type: ContentType }) {
@@ -68,6 +76,11 @@ export function ContentManager({ type }: { type: ContentType }) {
   const [categories, setCategories] = useState<Category[]>([])
   const [servers, setServers] = useState<AdminServer[]>([])
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // Actor search state
+  const [actorSearchOpen, setActorSearchOpen] = useState(false)
+  const [actorSearchQuery, setActorSearchQuery] = useState('')
+  const [actorSearchResults, setActorSearchResults] = useState<{ id: string; name: string; profilePhotoUrl: string | null }[]>([])
+  const [actorSearchLoading, setActorSearchLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,6 +158,51 @@ export function ContentManager({ type }: { type: ContentType }) {
     return newSrv.id
   }
 
+  // ── Actor helpers ──
+  const searchActorsDebounced = useCallback((query: string) => {
+    if (!query.trim()) { setActorSearchResults([]); return }
+    setActorSearchLoading(true)
+    fetch(`/api/actors?q=${encodeURIComponent(query.trim())}`)
+      .then((r) => r.json())
+      .then((d) => setActorSearchResults(d.actors ?? []))
+      .catch(() => setActorSearchResults([]))
+      .finally(() => setActorSearchLoading(false))
+  }, [])
+
+  function openActorSearch() {
+    setActorSearchQuery('')
+    setActorSearchResults([])
+    setActorSearchOpen(true)
+  }
+
+  function addActorLink(a: { id: string; name: string; profilePhotoUrl: string | null }) {
+    if (form.actorLinks.some((l: ActorLink) => l.actorId === a.id)) {
+      toast.error(`${a.name} is already in the cast`)
+      return
+    }
+    const newLink: ActorLink = {
+      actorId: a.id,
+      actorName: a.name,
+      actorPhoto: a.profilePhotoUrl,
+      characterName: '',
+      displayOrder: form.actorLinks.length,
+    }
+    setForm((f: any) => ({ ...f, actorLinks: [...f.actorLinks, newLink] }))
+    setActorSearchOpen(false)
+  }
+
+  function updateActorLink(index: number, patch: Partial<ActorLink>) {
+    setForm((f: any) => {
+      const next = [...f.actorLinks]
+      next[index] = { ...next[index], ...patch }
+      return { ...f, actorLinks: next }
+    })
+  }
+
+  function removeActorLink(index: number) {
+    setForm((f: any) => ({ ...f, actorLinks: f.actorLinks.filter((_: any, i: number) => i !== index) }))
+  }
+
   function openCreate() {
     setForm(EMPTY_FORM)
     setEditingId(null)
@@ -168,7 +226,13 @@ export function ContentManager({ type }: { type: ContentType }) {
       servers: type === 'movie'
         ? (it.servers ?? []).map((s: any) => ({ id: s.id, serverId: s.server.id, embedUrl: s.embedUrl, quality: s.quality, priority: 0, status: s.status }))
         : [],
-      cast: it.cast ?? '[]',
+      actorLinks: (it.actors ?? []).map((a: any, idx: number) => ({
+        actorId: a.actor?.id ?? a.actorId ?? '',
+        actorName: a.actor?.name ?? '',
+        actorPhoto: a.actor?.profilePhotoUrl ?? null,
+        characterName: a.characterName ?? '',
+        displayOrder: a.displayOrder ?? idx,
+      })).sort((a: any, b: any) => a.displayOrder - b.displayOrder),
     })
     setDialogOpen(true)
   }
@@ -425,11 +489,107 @@ export function ContentManager({ type }: { type: ContentType }) {
               ))}
             </div>
 
-            {/* Cast JSON */}
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Cast (JSON array, e.g. [{`{"name":"Actor","role":"Character"}`}])</Label>
-              <Textarea rows={3} value={form.cast} onChange={(e) => set('cast', e.target.value)} className="font-mono text-xs" />
+            {/* Cast — Actor selector with character name + display order */}
+            <div className="space-y-3 sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <Label>Cast</Label>
+                <Button type="button" size="sm" variant="outline" onClick={openActorSearch} className="gap-1">
+                  <Plus className="h-3.5 w-3.5" /> Add Actor
+                </Button>
+              </div>
+              {form.actorLinks.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No actors added. Click "Add Actor" to search and select.</p>
+              ) : (
+                <div className="space-y-2">
+                  {form.actorLinks.map((link: ActorLink, i: number) => (
+                    <div key={link.actorId} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
+                      {/* Actor photo + name */}
+                      <div className="flex min-w-[140px] items-center gap-2">
+                        <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary">
+                          {link.actorPhoto ? (
+                            <img src={link.actorPhoto} alt={link.actorName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="grid h-full w-full place-items-center text-xs font-bold text-muted-foreground">
+                              {link.actorName?.[0]?.toUpperCase() ?? '?'}
+                            </div>
+                          )}
+                        </div>
+                        <span className="truncate text-sm font-medium">{link.actorName}</span>
+                      </div>
+                      {/* Character name */}
+                      <Input
+                        className="min-w-[150px] flex-1"
+                        placeholder="Character name"
+                        value={link.characterName}
+                        onChange={(e) => updateActorLink(i, { characterName: e.target.value })}
+                      />
+                      {/* Display order */}
+                      <Input
+                        type="number"
+                        className="w-20"
+                        placeholder="Order"
+                        value={link.displayOrder}
+                        onChange={(e) => updateActorLink(i, { displayOrder: Number(e.target.value) })}
+                      />
+                      {/* Remove */}
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => removeActorLink(i)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Actor search popover */}
+            {actorSearchOpen && (
+              <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={() => setActorSearchOpen(false)}>
+                <div className="w-full max-w-md rounded-2xl border border-border bg-card p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="mb-3 text-lg font-bold">Search Actors</h3>
+                  <Input
+                    autoFocus
+                    placeholder="Type an actor name..."
+                    value={actorSearchQuery}
+                    onChange={(e) => { setActorSearchQuery(e.target.value); searchActorsDebounced(e.target.value) }}
+                    className="mb-3"
+                  />
+                  <div className="max-h-64 space-y-1 overflow-y-auto">
+                    {actorSearchLoading && <p className="py-4 text-center text-sm text-muted-foreground">Searching...</p>}
+                    {!actorSearchLoading && actorSearchResults.length === 0 && (
+                      <p className="py-4 text-center text-sm text-muted-foreground">
+                        No actors found. Create the actor first from the Actors page.
+                      </p>
+                    )}
+                    {actorSearchResults.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => addActorLink(a)}
+                        className="flex w-full items-center gap-3 rounded-lg border border-border p-2 text-left transition-colors hover:border-primary"
+                      >
+                        <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary">
+                          {a.profilePhotoUrl ? (
+                            <img src={a.profilePhotoUrl} alt={a.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="grid h-full w-full place-items-center text-xs font-bold text-muted-foreground">
+                              {a.name?.[0]?.toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">{a.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <Button variant="outline" className="mt-3 w-full" onClick={() => setActorSearchOpen(false)}>Close</Button>
+                </div>
+              </div>
+            )}
 
             {/* Servers (movies only) — with custom server name creation */}
             {type === 'movie' && (

@@ -259,17 +259,30 @@ export function WatchClient({ type, id, initialEpisodeId, detail, recommendation
                   <div>
                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Cast</h3>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                      {detail.cast.slice(0, 8).map((c, i) => (
-                        <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card/40 p-2.5">
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
-                            <User className="h-5 w-5" />
+                      {detail.cast.slice(0, 8).map((c, i) => {
+                        const castCard = (
+                          <div className="flex items-center gap-3 rounded-xl border border-border bg-card/40 p-2.5 transition-colors hover:border-primary/40">
+                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-primary/15">
+                              {c.image ? (
+                                <img src={c.image} alt={c.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="grid h-full w-full place-items-center text-primary">
+                                  <User className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{c.name}</div>
+                              {c.role && <div className="truncate text-xs text-muted-foreground">{c.role}</div>}
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{c.name}</div>
-                            <div className="truncate text-xs text-muted-foreground">{c.role}</div>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                        return c.actorSlug ? (
+                          <Link key={i} href={`/actors/${c.actorSlug}`}>{castCard}</Link>
+                        ) : (
+                          <div key={i}>{castCard}</div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

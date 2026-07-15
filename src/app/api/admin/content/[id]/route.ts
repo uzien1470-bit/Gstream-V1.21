@@ -20,7 +20,7 @@ export async function GET(
     if (type === 'movie') {
       const { data: item, error } = await supabase
         .from('Movie')
-        .select('*, genres:Genre!Movie_genres(*), categories:Category!Movie_categories(*), servers:MovieServer(*, server:StreamingServer(*))')
+        .select('*, genres:Genre!Movie_genres(*), categories:Category!Movie_categories(*), servers:MovieServer(*, server:StreamingServer(*)), actors:MovieActor(*, actor:Actor(*))')
         .eq('id', id)
         .maybeSingle()
       if (error) {
@@ -31,7 +31,7 @@ export async function GET(
     } else {
       const { data: item, error } = await supabase
         .from('Series')
-        .select('*, genres:Genre!Series_genres(*), categories:Category!Series_categories(*), seasons:Season(*, episodes:Episode(*))')
+        .select('*, genres:Genre!Series_genres(*), categories:Category!Series_categories(*), seasons:Season(*, episodes:Episode(*)), actors:SeriesActor(*, actor:Actor(*))')
         .eq('id', id)
         .maybeSingle()
       if (error) {
@@ -68,6 +68,7 @@ export async function PUT(
   const genreIds: string[] | undefined = Array.isArray(data.genreIds) ? data.genreIds : undefined
   const categoryIds: string[] | undefined = Array.isArray(data.categoryIds) ? data.categoryIds : undefined
   const servers: any[] | undefined = Array.isArray(data.servers) ? data.servers : undefined
+  const actorLinks: any[] | undefined = Array.isArray(data.actorLinks) ? data.actorLinks : undefined
 
   // Build the update row CONDITIONALLY so a partial update (e.g. toggling only
   // `featured`) does NOT reset every omitted field to its default value.
@@ -161,6 +162,20 @@ export async function PUT(
           }
         }
       }
+      // Replace actor links (MovieActor junction) — only if provided
+      if (actorLinks !== undefined) {
+        await supabase.from('MovieActor').delete().eq('movieId', id)
+        if (actorLinks.length > 0) {
+          const aRows = actorLinks.map((a) => ({
+            movieId: id,
+            actorId: a.actorId,
+            characterName: a.characterName ?? null,
+            displayOrder: Number(a.displayOrder) || 0,
+          }))
+          const { error: aInsErr } = await supabase.from('MovieActor').insert(aRows)
+          if (aInsErr) console.error('[admin/content PUT movie] MovieActor insert:', aInsErr.message)
+        }
+      }
       return NextResponse.json({ item: updated })
     } else {
       const { data: updated, error } = await supabase
@@ -205,6 +220,20 @@ export async function PUT(
             console.error('[admin/content PUT series] Series_categories insert:', cInsErr.message)
             return NextResponse.json({ error: 'Failed to link categories: ' + cInsErr.message }, { status: 500 })
           }
+        }
+      }
+      // Replace actor links (SeriesActor junction) — only if provided
+      if (actorLinks !== undefined) {
+        await supabase.from('SeriesActor').delete().eq('seriesId', id)
+        if (actorLinks.length > 0) {
+          const aRows = actorLinks.map((a) => ({
+            seriesId: id,
+            actorId: a.actorId,
+            characterName: a.characterName ?? null,
+            displayOrder: Number(a.displayOrder) || 0,
+          }))
+          const { error: aInsErr } = await supabase.from('SeriesActor').insert(aRows)
+          if (aInsErr) console.error('[admin/content PUT series] SeriesActor insert:', aInsErr.message)
         }
       }
       return NextResponse.json({ item: updated })

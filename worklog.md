@@ -462,3 +462,61 @@ Stage Summary:
 - Only 3 env vars needed: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 - `npm install` + `npm run dev` + `npm run build` all complete with zero errors
 - No Prisma, no SQLite, no db.ts — fully on @supabase/supabase-js
+
+---
+Task ID: ACTOR-ADMIN-PAGE
+Agent: sub-agent (general-purpose)
+Task: Build admin actor manager page (CRUD + search + pagination)
+
+Work Log:
+- Read worklog and existing admin pages (genres, servers, categories, users) for style/pattern reference.
+- Inspected API routes (/api/admin/actors route.ts + [id]/route.ts) to confirm request/response shapes: GET returns { items, total, page, limit } (no totalPages), POST/PUT return { item }, DELETE returns { ok } or 409 with explanatory error message when actor is linked to MovieActor/SeriesActor relationships.
+- Created `src/app/admin/actors/page.tsx` — a single-file, `'use client'` admin page.
+- Page wraps in `<AdminShell>` and matches existing dark purple cinematic theme (uses Playfair display font for H1, themed shadcn components, amber Star icon for actors).
+- Header: "Manage Actors" title + description + debounced search input (300ms) with Enter-to-search fallback + "Add Actor" button.
+- Table columns: Actor (Avatar with profilePhotoUrl + first-initial fallback + name + slug), Nationality, Status (green badge for published, secondary badge for draft), Created At (formatted date), Actions (Edit, Delete ghost icon buttons).
+- Create/Edit Dialog (`max-w-lg`, scrollable) with all required fields:
+  - Name * (required, validated client-side)
+  - Profile Photo URL (Input, placeholder "https://...")
+  - Hero Banner URL (Input, placeholder "https://...")
+  - Biography (Textarea rows=4)
+  - Birthday (Input type="date")
+  - Birth Place (Input)
+  - Nationality (Input)
+  - Status (Select: published / draft)
+  - "Slug (auto-generated)" note under Name field — API handles slugification.
+- Delete uses AlertDialog confirmation; on 409 (linked to titles) the API's `error` message is surfaced via sonner toast.error — explains the relationship count.
+- Pagination prev/next buttons with "Page X of Y" — only renders when totalPages > 1. Page is clamped; on deleting the last row of a page, automatically steps back to the previous page.
+- Empty/loading states mirror existing pages (Loader2 spinner, muted "No actors found." message).
+- Used shadcn/ui components: Card, Button, Input, Label, Textarea, Table, Dialog, AlertDialog, Select, Badge, Avatar.
+
+Stage Summary:
+- File created: `src/app/admin/actors/page.tsx` (single new file, no other files modified).
+- `bun run lint` → 0 errors, 0 warnings (eslint . exited clean).
+- Page is fully self-contained and reuses the established admin CRUD/search/pagination patterns from users/genres/servers pages.
+
+---
+Task ID: ACTOR-SYSTEM
+Agent: main
+Task: Actor Management System (v1.1) — relational actors, filmography, admin CRUD, search integration
+
+Work Log:
+- Created supabase/migrations/actors.sql: Actor table, MovieActor + SeriesActor junctions, RLS, updated_at trigger, data migration from JSON cast (idempotent)
+- Added Actor types to src/lib/types.ts (ActorCard, ActorDetail, CastEntry)
+- Updated src/lib/content.ts: getMovieDetail/getSeriesDetail now fetch cast from relational Actor junctions (with fallback to JSON); added getActorDetail() + searchActors()
+- Created public API routes: /api/actors (search), /api/actors/[slug] (detail with filmography)
+- Created admin API routes: /api/admin/actors (GET list, POST create), /api/admin/actors/[id] (PUT update, DELETE with relationship protection)
+- Created admin/actors/page.tsx: full CRUD page (search, pagination, create/edit dialog, delete with 409 protection)
+- Added "Actors" nav item to AdminShell sidebar
+- Updated ContentManager: replaced JSON cast textarea with searchable Actor selector (search popover, character name input, display order, remove)
+- Updated content POST/PUT API routes to handle actorLinks (MovieActor/SeriesActor junction insert/delete)
+- Updated content GET API to include actors in the detail response
+- Updated watch-client cast display: actor photos + clickable links to /actors/[slug]
+- Created /actors/[slug] public page: hero banner, profile photo, bio, filmography grid (reuses ContentCard)
+- Updated search API to also return actor results
+- Updated search page to display actor results section above content grid
+- NO existing functionality modified; all existing routes/features preserved
+
+Stage Summary:
+- Actor system fully integrated; build passes (exit 0), lint clean, all routes 200
+- Run supabase/migrations/actors.sql in Supabase SQL Editor to activate (auto-migrates existing JSON cast)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { searchContent } from '@/lib/content'
+import { searchContent, searchActors } from '@/lib/content'
 import type { ContentType } from '@/lib/types'
 
 export async function GET(req: NextRequest) {
@@ -10,6 +10,9 @@ export async function GET(req: NextRequest) {
   const yearStr = searchParams.get('year')
   const year = yearStr ? Number(yearStr) : undefined
 
-  const items = await searchContent(q, { type, genre, year })
-  return NextResponse.json({ items })
+  const [items, actors] = await Promise.all([
+    searchContent(q, { type, genre, year }),
+    q.trim() ? searchActors(q, 6) : Promise.resolve([]),
+  ])
+  return NextResponse.json({ items, actors })
 }

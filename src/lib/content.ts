@@ -15,6 +15,8 @@ import type {
   SeasonData,
   ServerOption,
   CastMember,
+  ActorCard,
+  ActorDetail,
 } from '@/lib/types'
 import type { HeroSlide } from '@/components/content/hero-banner'
 
@@ -26,6 +28,28 @@ function parseCast(castJson: unknown): CastMember[] {
   } catch {
     return []
   }
+}
+
+/**
+ * Build a CastMember[] from the relational Actor junction rows
+ * (MovieActor/SeriesActor with nested actor:Actor). Falls back to
+ * parseCast(jsonCast) if the junction rows are empty (legacy data).
+ */
+function buildCastFromActors(actorRows: any, jsonCast?: string): CastMember[] {
+  if (Array.isArray(actorRows) && actorRows.length > 0) {
+    return actorRows
+      .slice()
+      .sort((a: any, b: any) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+      .map((r: any): CastMember => ({
+        name: r.actor?.name ?? 'Unknown',
+        role: r.characterName ?? '',
+        image: r.actor?.profilePhotoUrl ?? undefined,
+        actorId: r.actor?.id,
+        actorSlug: r.actor?.slug,
+      }))
+  }
+  // Fallback to legacy JSON cast if no relational actors found
+  return parseCast(jsonCast)
 }
 
 function sortServers(servers: ServerOption[]): ServerOption[] {
@@ -177,7 +201,7 @@ export async function getMovieDetail(id: string): Promise<ContentDetail | null> 
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from('Movie')
-      .select('*, genres:Genre!Movie_genres(name), categories:Category!Movie_categories(name), servers:MovieServer(*, server:StreamingServer(*))')
+      .select('*, genres:Genre!Movie_genres(name), categories:Category!Movie_categories(name), servers:MovieServer(*, server:StreamingServer(*)), actors:MovieActor(*, actor:Actor(*))')
       .eq('id', id)
       .single()
     if (error || !data) return null
@@ -192,6 +216,8 @@ export async function getMovieDetail(id: string): Promise<ContentDetail | null> 
         priority: ms.priority,
         status: ms.status,
       }))
+    // Build cast from relational Actor junction, falling back to JSON cast
+    const cast = buildCastFromActors(m.actors)
     return {
       id: m.id, title: m.title, slug: m.slug, type: 'movie',
       synopsis: m.synopsis, posterUrl: m.posterUrl, backdropUrl: m.backdropUrl,
@@ -199,7 +225,7 @@ export async function getMovieDetail(id: string): Promise<ContentDetail | null> 
       voteCount: m.voteCount, runtime: m.runtime, trailerUrl: m.trailerUrl,
       genres: (m.genres ?? []).map((g: any) => g.name),
       categories: (m.categories ?? []).map((c: any) => c.name),
-      cast: parseCast(m.cast), servers: sortServers(servers), seasons: [],
+      cast, servers: sortServers(servers), seasons: [],
       featured: m.featured, trending: m.trending, popular: m.popular, topRated: m.topRated,
     }
   } catch {
@@ -212,7 +238,7 @@ export async function getSeriesDetail(id: string): Promise<ContentDetail | null>
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from('Series')
-      .select('*, genres:Genre!Series_genres(name), categories:Category!Series_categories(name), seasons:Season(*, episodes:Episode(*, servers:EpisodeServer(*, server:StreamingServer(*))))')
+      .select('*, genres:Genre!Series_genres(name), categories:Category!Series_categories(name), seasons:Season(*, episodes:Episode(*, servers:EpisodeServer(*, server:StreamingServer(*)))), actors:SeriesActor(*, actor:Actor(*))')
       .eq('id', id)
       .single()
     if (error || !data) return null
@@ -259,7 +285,7 @@ export async function getSeriesDetail(id: string): Promise<ContentDetail | null>
       voteCount: s.voteCount, runtime: 0, trailerUrl: s.trailerUrl,
       genres: (s.genres ?? []).map((g: any) => g.name),
       categories: (s.categories ?? []).map((c: any) => c.name),
-      cast: parseCast(s.cast), servers: [], seasons,
+      cast: buildCastFromActors(s.actors), servers: [], seasons,
       featured: s.featured, trending: s.trending, popular: s.popular, topRated: s.topRated,
     }
   } catch {
@@ -496,5 +522,84 @@ export async function getHomeData() {
       recommended: [],
       recentlyUpdated: [],
     }
+  }
+}
+
+// ──────────────────────────── Actor queries ────────────────────────────
+
+/** Fetch a single actor by slug with their full filmography. */
+export async function getActorDetail(slug: string): Promise<ActorDetail | null> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data: actor, error } = await supabase
+      .from('Actor')
+      .select('*')
+      .eq('slug', slug)
+      .eq('status', 'published')
+      .maybeSingle()
+    if (error || !actor) return null
+    const a = actor as any
+
+    // Fetch filmography: movies + series via junction tables
+    const [moviesRes, seriesRes] = await Promise.all([
+      supabase
+        .from('MovieActor')
+        .select('movieId, characterName, movie:Movie(id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, runtime, type, trending, popular, topRated, recentlyAdded, status, genres:Genre!Movie_genres(name))')
+        .eq('actorId', a.id)
+        .order('displayOrder', { ascending: true }),
+      supabase
+        .from('SeriesActor')
+        .select('seriesId, characterName, series:Series(id, title, slug, synopsis, posterUrl, backdropUrl, logoUrl, releaseYear, rating, type, trending, popular, topRated, recentlyAdded, status, genres:Genre!Series_genres(name))')
+        .eq('actorId', a.id)
+        .order('displayOrder', { ascending: true }),
+    ])
+
+    const filmography: ContentCardData[] = []
+    for (const r of (moviesRes.data ?? []) as any[]) {
+      if (r.movie && r.movie.status === 'published') {
+        filmography.push(movieToCard(r.movie, r.movie.genres))
+      }
+    }
+    for (const r of (seriesRes.data ?? []) as any[]) {
+      if (r.series && r.series.status === 'published') {
+        filmography.push(seriesToCard(r.series, r.series.genres))
+      }
+    }
+
+    return {
+      id: a.id,
+      name: a.name,
+      slug: a.slug,
+      profilePhotoUrl: a.profilePhotoUrl,
+      heroPhotoUrl: a.heroPhotoUrl,
+      biography: a.biography,
+      birthday: a.birthday,
+      birthPlace: a.birthPlace,
+      nationality: a.nationality,
+      status: a.status,
+      filmography,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Search actors by name (for global search + admin actor selector). */
+export async function searchActors(query: string, limit = 10): Promise<ActorCard[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const q = query.trim()
+    if (!q) return []
+    const { data, error } = await supabase
+      .from('Actor')
+      .select('id, name, slug, profilePhotoUrl')
+      .or(`name.ilike.%${q}%`)
+      .eq('status', 'published')
+      .order('name', { ascending: true })
+      .limit(limit)
+    if (error || !data) return []
+    return data as ActorCard[]
+  } catch {
+    return []
   }
 }

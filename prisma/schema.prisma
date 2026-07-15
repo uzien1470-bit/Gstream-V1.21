@@ -1,0 +1,311 @@
+// Gstream — Premium OTT Streaming Platform
+// Prisma schema (PostgreSQL). Designed for Supabase.
+//
+// Auth is handled by Supabase Auth (auth.users table, managed by Supabase).
+// This schema defines a public."User" profile table whose `id` (UUID) references
+// auth.users(id) ON DELETE CASCADE. A Supabase trigger (see supabase/setup.sql)
+// auto-creates a profile row whenever a new auth.users row is inserted.
+//
+// Prisma does not manage auth.users; it only manages the public schema tables below.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── User Profile ─────────────────────────────
+// Mirror of auth.users for app-specific data (role, status, avatar).
+// `id` is the Supabase auth user UUID (text to stay flexible across UUID formats).
+
+model User {
+  id         String   @id // matches auth.users(id) — UUID string
+  email      String   @unique
+  name       String?
+  avatarUrl  String?
+  role       String   @default("user") // "user" | "admin"
+  status     String   @default("active") // "active" | "suspended"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  myList        MyList[]
+  watchHistory  WatchHistory[]
+  watchProgress WatchProgress[]
+
+  @@index([role])
+  @@index([status])
+}
+
+// ───────────────────────────── Taxonomy ─────────────────────────────
+
+model Genre {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  slug      String      @unique
+  createdAt DateTime    @default(now())
+
+  movies Movie[]
+  series Series[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  icon      String?
+  createdAt DateTime @default(now())
+
+  movies Movie[]
+  series Series[]
+}
+
+// ───────────────────────────── Streaming Servers ─────────────────────────────
+
+model StreamingServer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  priority  Int      @default(0)
+  status    String   @default("active") // "active" | "inactive"
+  createdAt DateTime @default(now())
+
+  movieServers   MovieServer[]
+  episodeServers EpisodeServer[]
+}
+
+// ───────────────────────────── Movies ─────────────────────────────
+
+model Movie {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  synopsis        String
+  posterUrl       String
+  backdropUrl     String
+  logoUrl         String?
+  releaseYear     Int
+  runtime         Int // minutes
+  rating          Float    @default(0) // 0-10
+  voteCount       Int      @default(0)
+  trailerUrl      String?
+  type            String   @default("movie")
+  featured        Boolean  @default(false)
+  trending        Boolean  @default(false)
+  popular         Boolean  @default(false)
+  topRated        Boolean  @default(false)
+  recentlyAdded   Boolean  @default(true)
+  recentlyUpdated Boolean   @default(true)
+  status          String   @default("published") // "draft" | "published"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  genres     Genre[]
+  categories Category[]
+  cast       String // JSON string: [{name, role, image}]
+  servers    MovieServer[]
+  myList     MyList[]
+  history    WatchHistory[]
+  progress   WatchProgress[]
+  banners    FeaturedBanner[]
+
+  @@index([trending])
+  @@index([popular])
+  @@index([topRated])
+  @@index([recentlyAdded])
+  @@index([featured])
+  @@index([status])
+}
+
+model MovieServer {
+  id        String   @id @default(cuid())
+  movieId   String
+  serverId  String
+  embedUrl  String
+  quality   String   @default("Auto")
+  priority  Int      @default(0)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  movie  Movie            @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  server StreamingServer  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@index([serverId])
+}
+
+// ───────────────────────────── TV Series & Anime ─────────────────────────────
+
+model Series {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  synopsis        String
+  posterUrl       String
+  backdropUrl     String
+  logoUrl         String?
+  releaseYear     Int
+  rating          Float    @default(0)
+  voteCount       Int      @default(0)
+  trailerUrl      String?
+  type            String   @default("series") // "series" | "anime"
+  featured        Boolean  @default(false)
+  trending        Boolean  @default(false)
+  popular         Boolean  @default(false)
+  topRated        Boolean  @default(false)
+  recentlyAdded   Boolean  @default(true)
+  recentlyUpdated Boolean   @default(true)
+  status          String   @default("published")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  genres     Genre[]
+  categories Category[]
+  cast       String // JSON string
+  seasons    Season[]
+  myList     MyList[]
+  history    WatchHistory[]
+  progress   WatchProgress[]
+  banners    FeaturedBanner[]
+
+  @@index([type])
+  @@index([trending])
+  @@index([popular])
+  @@index([topRated])
+  @@index([recentlyAdded])
+  @@index([featured])
+  @@index([status])
+}
+
+model Season {
+  id           String   @id @default(cuid())
+  seriesId     String
+  seasonNumber Int
+  title        String
+  description  String?
+  posterUrl    String?
+  episodeCount Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  series   Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@index([seriesId])
+}
+
+model Episode {
+  id            String   @id @default(cuid())
+  seasonId      String
+  episodeNumber Int
+  title         String
+  description   String?
+  thumbnailUrl  String?
+  runtime       Int      @default(0) // minutes
+  airDate       String?
+  createdAt     DateTime @default(now())
+
+  season  Season           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  servers EpisodeServer[]
+  history WatchHistory[]
+  progress WatchProgress[]
+
+  @@index([seasonId])
+}
+
+model EpisodeServer {
+  id         String   @id @default(cuid())
+  episodeId  String
+  serverId   String
+  embedUrl   String
+  quality    String   @default("Auto")
+  priority   Int      @default(0)
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+
+  episode Episode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  server  StreamingServer  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@index([serverId])
+}
+
+// ───────────────────────────── Featured Banners ─────────────────────────────
+
+model FeaturedBanner {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  imageUrl    String
+  logoUrl     String?
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  movieId     String?
+  seriesId    String?
+  createdAt   DateTime @default(now())
+
+  movie  Movie?  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  series Series? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([active])
+  @@index([order])
+}
+
+// ───────────────────────────── User Activity ─────────────────────────────
+
+model MyList {
+  id          String   @id @default(cuid())
+  userId      String
+  movieId     String?
+  seriesId    String?
+  contentType String // "movie" | "series" | "anime"
+  createdAt   DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie  Movie?  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  series Series? @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId, seriesId])
+  @@index([userId])
+}
+
+model WatchHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  movieId     String?
+  seriesId    String?
+  episodeId   String?
+  contentType String
+  watchedAt   DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie   Movie?   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  series  Series?  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episode Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([watchedAt])
+}
+
+model WatchProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  movieId     String?
+  seriesId    String?
+  episodeId   String?
+  contentType String
+  progress    Float    @default(0) // 0-100 percent
+  duration    Int      @default(0) // seconds
+  position    Int      @default(0) // seconds
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie   Movie?   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  series  Series?  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episode Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId, seriesId, episodeId])
+  @@index([userId])
+}

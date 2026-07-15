@@ -6,6 +6,41 @@ export interface CastMember {
   name: string
   role: string
   image?: string
+  actorId?: string
+  actorSlug?: string
+}
+
+// ───────────────────────────── Actor types ─────────────────────────────
+
+export interface ActorCard {
+  id: string
+  name: string
+  slug: string
+  profilePhotoUrl: string | null
+}
+
+export interface ActorDetail {
+  id: string
+  name: string
+  slug: string
+  profilePhotoUrl: string | null
+  heroPhotoUrl: string | null
+  biography: string | null
+  birthday: string | null
+  birthPlace: string | null
+  nationality: string | null
+  status: string
+  filmography: ContentCardData[]
+}
+
+/** A cast entry returned by content detail queries (joins Actor + junction) */
+export interface CastEntry {
+  actorId: string
+  name: string
+  slug: string
+  profilePhotoUrl: string | null
+  characterName: string | null
+  displayOrder: number
 }
 
 export interface ContentCardData {

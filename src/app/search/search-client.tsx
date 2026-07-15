@@ -2,11 +2,19 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Search as SearchIcon, X, Film, Tv, Sparkles, Filter } from 'lucide-react'
+import Link from 'next/link'
+import { Search as SearchIcon, X, Film, Tv, Sparkles, Filter, UserCircle } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
 import { ContentCard, ContentCardSkeleton } from '@/components/content/content-card'
 import { cn } from '@/lib/utils'
 import type { ContentCardData, ContentType } from '@/lib/types'
+
+interface ActorResult {
+  id: string
+  name: string
+  slug: string
+  profilePhotoUrl: string | null
+}
 
 const TYPE_TABS: { value: ContentType | 'all'; label: string; icon: any }[] = [
   { value: 'all', label: 'All', icon: Filter },
@@ -23,6 +31,7 @@ export function SearchClient() {
   const [genre, setGenre] = useState('all')
   const [year, setYear] = useState<string>('')
   const [results, setResults] = useState<ContentCardData[]>([])
+  const [actorResults, setActorResults] = useState<ActorResult[]>([])
   const [genres, setGenres] = useState<{ name: string; slug: string }[]>([])
   const [loading, setLoading] = useState(false)
   const [years, setYears] = useState<number[]>([])
@@ -58,6 +67,7 @@ export function SearchClient() {
         const res = await fetch(u.toString())
         const data = await res.json()
         setResults(data.items ?? [])
+        setActorResults(data.actors ?? [])
       } catch {
         setResults([])
       } finally {
@@ -143,8 +153,37 @@ export function SearchClient() {
 
         {/* Results */}
         <div className="mb-4 text-sm text-muted-foreground">
-          {loading ? 'Searching...' : `${results.length} result${results.length === 1 ? '' : 's'}`}
+          {loading ? 'Searching...' : `${results.length} result${results.length === 1 ? '' : 's'}${actorResults.length > 0 ? ` · ${actorResults.length} actor${actorResults.length === 1 ? '' : 's'}` : ''}`}
         </div>
+
+        {/* Actor results */}
+        {!loading && actorResults.length > 0 && (
+          <div className="mb-8">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              <UserCircle className="h-4 w-4" /> Actors
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              {actorResults.map((a) => (
+                <Link
+                  key={a.id}
+                  href={`/actors/${a.slug}`}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card/40 p-3 transition-colors hover:border-primary/50"
+                >
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-secondary">
+                    {a.profilePhotoUrl ? (
+                      <img src={a.profilePhotoUrl} alt={a.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-lg font-bold text-muted-foreground">
+                        {a.name?.[0]?.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">{a.name}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
