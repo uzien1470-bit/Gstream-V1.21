@@ -63,7 +63,7 @@ export function EmbedPlayer({ servers, playerKey, onServerChange }: EmbedPlayerP
               title="Gstream Player"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
-              referrerPolicy="no-referrer"
+              referrerPolicy="origin-when-cross-origin"
               className="h-full w-full border-0"
               onLoad={() => setLoaded(true)}
               onError={() => setHasError(true)}
