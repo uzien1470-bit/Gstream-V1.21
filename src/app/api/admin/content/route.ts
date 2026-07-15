@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
 
   const row: any = {
     title: data.title,
-    slug: data.slug || slugify(String(data.title ?? '')),
+    slug: (data.slug && slugify(String(data.slug))) || slugify(String(data.title ?? '')),
     synopsis: data.synopsis ?? '',
     posterUrl: data.posterUrl ?? '',
     backdropUrl: data.backdropUrl ?? '',

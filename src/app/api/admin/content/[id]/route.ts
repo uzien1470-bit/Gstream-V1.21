@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/auth'
 
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -69,7 +73,7 @@ export async function PUT(
   // `featured`) does NOT reset every omitted field to its default value.
   const row: any = { recentlyUpdated: true }
   if (data.title !== undefined) row.title = data.title
-  if (data.slug !== undefined) row.slug = data.slug
+  if (data.slug !== undefined) row.slug = slugify(String(data.slug)) || slugify(String(data.title ?? ''))
   if (data.synopsis !== undefined) row.synopsis = data.synopsis
   if (data.posterUrl !== undefined) row.posterUrl = data.posterUrl
   if (data.backdropUrl !== undefined) row.backdropUrl = data.backdropUrl
