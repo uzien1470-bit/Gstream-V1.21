@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { TagInput, ServerNameCombo } from '@/components/admin/tag-input'
 
 type ContentType = 'movie' | 'series' | 'anime'
 
@@ -89,6 +90,60 @@ export function ContentManager({ type }: { type: ContentType }) {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Create a new genre on-the-fly (returns its id)
+  async function createGenre(name: string): Promise<string | null> {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    const res = await fetch('/api/admin/genres', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      toast.error(data.error || 'Failed to create genre')
+      return null
+    }
+    const newGenre = { id: data.item.id, name: data.item.name, slug: data.item.slug }
+    setGenres((prev) => [...prev, newGenre])
+    return newGenre.id
+  }
+
+  // Create a new category on-the-fly (returns its id)
+  async function createCategory(name: string): Promise<string | null> {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    const res = await fetch('/api/admin/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      toast.error(data.error || 'Failed to create category')
+      return null
+    }
+    const newCat = { id: data.item.id, name: data.item.name, slug: data.item.slug }
+    setCategories((prev) => [...prev, newCat])
+    return newCat.id
+  }
+
+  // Create a new streaming server on-the-fly (returns its id)
+  async function createServer(name: string): Promise<string | null> {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    const res = await fetch('/api/admin/servers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, priority: 0, status: 'active' }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      toast.error(data.error || 'Failed to create server')
+      return null
+    }
+    const newSrv = { id: data.item.id, name: data.item.name, slug: data.item.slug }
+    setServers((prev) => [...prev, newSrv])
+    return newSrv.id
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM)
@@ -331,50 +386,28 @@ export function ContentManager({ type }: { type: ContentType }) {
               </Select>
             </div>
 
-            {/* Genres multi-select via checkboxes */}
+            {/* Genres — tag input with custom creation */}
             <div className="space-y-2 sm:col-span-2">
               <Label>Genres</Label>
-              <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto rounded-lg border border-border p-2">
-                {genres.map((g) => {
-                  const checked = form.genreIds.includes(g.id)
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => set('genreIds', checked ? form.genreIds.filter((x: string) => x !== g.id) : [...form.genreIds, g.id])}
-                      className={cn(
-                        'rounded-full px-3 py-1 text-xs transition-colors',
-                        checked ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {g.name}
-                    </button>
-                  )
-                })}
-              </div>
+              <TagInput
+                available={genres}
+                selectedIds={form.genreIds}
+                onChange={(ids) => set('genreIds', ids)}
+                onCreate={createGenre}
+                placeholder="Type a genre name and press Enter to create..."
+              />
             </div>
 
-            {/* Categories */}
+            {/* Categories — tag input with custom creation */}
             <div className="space-y-2 sm:col-span-2">
               <Label>Categories</Label>
-              <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto rounded-lg border border-border p-2">
-                {categories.map((c) => {
-                  const checked = form.categoryIds.includes(c.id)
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => set('categoryIds', checked ? form.categoryIds.filter((x: string) => x !== c.id) : [...form.categoryIds, c.id])}
-                      className={cn(
-                        'rounded-full px-3 py-1 text-xs transition-colors',
-                        checked ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {c.name}
-                    </button>
-                  )
-                })}
-              </div>
+              <TagInput
+                available={categories}
+                selectedIds={form.categoryIds}
+                onChange={(ids) => set('categoryIds', ids)}
+                onCreate={createCategory}
+                placeholder="Type a category name and press Enter to create..."
+              />
             </div>
 
             {/* Flags */}
@@ -398,7 +431,7 @@ export function ContentManager({ type }: { type: ContentType }) {
               <Textarea rows={3} value={form.cast} onChange={(e) => set('cast', e.target.value)} className="font-mono text-xs" />
             </div>
 
-            {/* Servers (movies only) */}
+            {/* Servers (movies only) — with custom server name creation */}
             {type === 'movie' && (
               <div className="space-y-3 sm:col-span-2">
                 <div className="flex items-center justify-between">
@@ -410,14 +443,25 @@ export function ContentManager({ type }: { type: ContentType }) {
                 <div className="space-y-2">
                   {form.servers.map((s: ServerRow, i: number) => (
                     <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
-                      <Select value={s.serverId} onValueChange={(v) => {
-                        const next = [...form.servers]; next[i] = { ...next[i], serverId: v }; set('servers', next)
-                      }}>
-                        <SelectTrigger className="w-36"><SelectValue placeholder="Server" /></SelectTrigger>
-                        <SelectContent>
-                          {servers.map((srv) => <SelectItem key={srv.id} value={srv.id}>{srv.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      {/* Server name — combobox: existing servers OR type a custom name */}
+                      <ServerNameCombo
+                        servers={servers}
+                        value={s.serverId}
+                        onChange={async (serverId, name) => {
+                          const next = [...form.servers]
+                          next[i] = { ...next[i], serverId }
+                          set('servers', next)
+                          // If a new name was provided and no serverId, create it
+                          if (!serverId && name) {
+                            const newId = await createServer(name)
+                            if (newId) {
+                              const next2 = [...form.servers]
+                              next2[i] = { ...next2[i], serverId: newId }
+                              set('servers', next2)
+                            }
+                          }
+                        }}
+                      />
                       <Input className="min-w-[200px] flex-1" placeholder="Embed URL" value={s.embedUrl} onChange={(e) => {
                         const next = [...form.servers]; next[i] = { ...next[i], embedUrl: e.target.value }; set('servers', next)
                       }} />

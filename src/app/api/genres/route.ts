@@ -6,12 +6,12 @@ export async function GET() {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from('Genre')
-      .select('name, slug')
+      .select('id, name, slug')
       .order('name', { ascending: true })
     if (error || !data) {
       return NextResponse.json({ genres: [] })
     }
-    return NextResponse.json({ genres: data as { name: string; slug: string }[] })
+    return NextResponse.json({ genres: data as { id: string; name: string; slug: string }[] })
   } catch {
     return NextResponse.json({ genres: [] })
   }
