@@ -48,12 +48,24 @@ export async function GET() {
         return NextResponse.json({ items: [] })
       }
 
+      // Deduplicate by content (movieId for movies, seriesId for series).
+      // Keep only the MOST RECENT row per content (rows are already ordered
+      // by updatedAt DESC, so the first occurrence is the latest).
+      const seenContent = new Set<string>()
+      const dedupedRows: ProgressRow[] = []
+      for (const p of progressRows as ProgressRow[]) {
+        const contentKey = p.movieId ?? p.seriesId ?? ''
+        if (!contentKey || seenContent.has(contentKey)) continue
+        seenContent.add(contentKey)
+        dedupedRows.push(p)
+      }
+
       const items: (ContentCardData & {
         progress: number
         episodeId?: string | null
       })[] = []
 
-      for (const p of progressRows as ProgressRow[]) {
+      for (const p of dedupedRows) {
         if (p.movieId) {
           const { data: m, error: mErr } = await supabase
             .from('Movie')
