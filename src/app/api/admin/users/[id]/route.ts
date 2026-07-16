@@ -29,7 +29,7 @@ export async function PUT(
     }
     if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-    const data: { status?: string; role?: string } = {}
+    const data: { status?: string; role?: string; avatarUrl?: string | null } = {}
 
     // Status updates — only "active" | "suspended"
     if (body.status !== undefined) {
@@ -74,6 +74,11 @@ export async function PUT(
         }
       }
       data.role = body.role
+    }
+
+    // Profile image URL update (admin-managed)
+    if (body.avatarUrl !== undefined) {
+      data.avatarUrl = body.avatarUrl || null
     }
 
     const { data: updated, error } = await supabase

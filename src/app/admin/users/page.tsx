@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   Users, Trash2, Loader2, Search, Shield, ShieldCheck, ShieldX,
-  Ban, CheckCircle2, ChevronLeft, ChevronRight, User as UserIcon,
+  Ban, CheckCircle2, ChevronLeft, ChevronRight, User as UserIcon, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminShell } from '@/components/admin/admin-shell'
@@ -53,6 +53,9 @@ export default function AdminUsersPage() {
   const [roleTarget, setRoleTarget] = useState<UserRow | null>(null)
   const [roleValue, setRoleValue] = useState<'user' | 'admin'>('user')
   const [savingRole, setSavingRole] = useState(false)
+  const [profileTarget, setProfileTarget] = useState<UserRow | null>(null)
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
 
   const load = useCallback(async (p: number, q: string) => {
     setLoading(true)
@@ -111,6 +114,32 @@ export default function AdminUsersPage() {
   function openRoleDialog(u: UserRow) {
     setRoleTarget(u)
     setRoleValue(u.role === 'admin' ? 'admin' : 'user')
+  }
+
+  function openProfileDialog(u: UserRow) {
+    setProfileTarget(u)
+    setProfileAvatarUrl(u.avatarUrl ?? '')
+  }
+
+  async function saveProfile() {
+    if (!profileTarget) return
+    setSavingProfile(true)
+    try {
+      const res = await fetch(`/api/admin/users/${profileTarget.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarUrl: profileAvatarUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update')
+      toast.success('Profile image updated')
+      setProfileTarget(null)
+      await load(page, search)
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update profile image')
+    } finally {
+      setSavingProfile(false)
+    }
   }
 
   async function saveRole() {
@@ -251,6 +280,14 @@ export default function AdminUsersPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => openProfileDialog(u)}
+                              title="Set profile image"
+                            >
+                              <ImagePlus className="h-4 w-4" /> Profile
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => openRoleDialog(u)}
                               disabled={isSelf && isAdmin}
                               title={isSelf && isAdmin ? "You can't change your own role" : 'Change role'}
@@ -376,6 +413,47 @@ export default function AdminUsersPage() {
             <Button variant="outline" onClick={() => setRoleTarget(null)} disabled={savingRole}>Cancel</Button>
             <Button onClick={saveRole} disabled={savingRole}>
               {savingRole && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Profile image dialog */}
+      <Dialog open={!!profileTarget} onOpenChange={(o) => !o && setProfileTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Profile Image</DialogTitle>
+            <DialogDescription>
+              Set a profile image URL for <strong>{profileTarget?.name || profileTarget?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label>Profile Image URL</Label>
+            <Input
+              value={profileAvatarUrl}
+              onChange={(e) => setProfileAvatarUrl(e.target.value)}
+              placeholder="https://example.com/avatar.jpg"
+            />
+            {profileAvatarUrl && (
+              <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={profileAvatarUrl} />
+                  <AvatarFallback>
+                    <UserIcon className="h-5 w-5" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm text-muted-foreground">Preview</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Paste a direct image URL. Leave empty to use the default avatar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProfileTarget(null)} disabled={savingProfile}>Cancel</Button>
+            <Button onClick={saveProfile} disabled={savingProfile}>
+              {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
               Save
             </Button>
           </DialogFooter>
