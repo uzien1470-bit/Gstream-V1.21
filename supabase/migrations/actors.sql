@@ -114,16 +114,18 @@ where j->>'name' is not null and trim(j->>'name') <> ''
 on conflict (slug) do nothing;
 
 -- 3. Create MovieActor relationships from Movie.cast JSON
+-- NOTE: json_array_elements(...) WITH ORDINALITY returns a record (value, ord).
+-- We alias as j(val, ord) and extract from j.val.
 insert into "MovieActor" ("movieId", "actorId", "characterName", "displayOrder")
 select
   m.id as "movieId",
   a.id as "actorId",
-  j->>'role' as "characterName",
-  row_number() over (partition by m.id order by ordinality) - 1 as "displayOrder"
+  j.val->>'role' as "characterName",
+  j.ord - 1 as "displayOrder"
 from "Movie" m
-cross join lateral json_array_elements(m."cast"::json) with ordinality as j
-join "Actor" a on a.slug = public.actor_slug(trim((j->>'name')::text))
-where j->>'name' is not null and trim(j->>'name') <> ''
+cross join lateral json_array_elements(m."cast"::json) with ordinality as j(val, ord)
+join "Actor" a on a.slug = public.actor_slug(trim((j.val->>'name')::text))
+where j.val->>'name' is not null and trim(j.val->>'name') <> ''
 on conflict ("movieId", "actorId") do nothing;
 
 -- 4. Create SeriesActor relationships from Series.cast JSON (includes anime)
@@ -131,12 +133,12 @@ insert into "SeriesActor" ("seriesId", "actorId", "characterName", "displayOrder
 select
   s.id as "seriesId",
   a.id as "actorId",
-  j->>'role' as "characterName",
-  row_number() over (partition by s.id order by ordinality) - 1 as "displayOrder"
+  j.val->>'role' as "characterName",
+  j.ord - 1 as "displayOrder"
 from "Series" s
-cross join lateral json_array_elements(s."cast"::json) with ordinality as j
-join "Actor" a on a.slug = public.actor_slug(trim((j->>'name')::text))
-where j->>'name' is not null and trim(j->>'name') <> ''
+cross join lateral json_array_elements(s."cast"::json) with ordinality as j(val, ord)
+join "Actor" a on a.slug = public.actor_slug(trim((j.val->>'name')::text))
+where j.val->>'name' is not null and trim(j.val->>'name') <> ''
 on conflict ("seriesId", "actorId") do nothing;
 
 -- ============================================================
