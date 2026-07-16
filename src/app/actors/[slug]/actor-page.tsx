@@ -29,7 +29,7 @@ export function ActorPage({ actor }: { actor: ActorDetail }) {
 
       <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10">
         {/* Profile header */}
-        <div className="-mt-24 flex flex-col gap-6 sm:flex-row sm:items-end">
+        <div className="-mt-20 flex flex-col gap-6 sm:flex-row sm:items-end sm:gap-8">
           {/* Profile photo */}
           <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-2xl border-4 border-background shadow-2xl sm:h-40 sm:w-40">
             {actor.profilePhotoUrl ? (
@@ -47,9 +47,9 @@ export function ActorPage({ actor }: { actor: ActorDetail }) {
           </div>
 
           {/* Name + meta */}
-          <div className="flex-1 pb-2">
+          <div className="flex-1 pb-2 sm:pb-4">
             <h1
-              className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-5xl"
+              className="text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               {actor.name}
