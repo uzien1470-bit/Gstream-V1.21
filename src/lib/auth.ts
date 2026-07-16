@@ -7,6 +7,7 @@ export interface AuthUser {
   role: 'user' | 'admin'
   status: string
   avatarUrl: string | null
+  avatarId: string | null
 }
 
 /**
@@ -14,8 +15,8 @@ export interface AuthUser {
  * Uses Supabase Auth for the session and the `public."User"` profile table
  * for role/status/avatar.
  *
- * If the anon client can't read the profile (RLS recursion / missing row),
- * falls back to the admin (service-role) client which bypasses RLS.
+ * Resolves avatarId → imageUrl from the Avatar table. Falls back to the
+ * legacy avatarUrl column if avatarId is not set.
  */
 export async function getSessionUser(): Promise<AuthUser | null> {
   try {
@@ -28,17 +29,16 @@ export async function getSessionUser(): Promise<AuthUser | null> {
     // Try reading the profile with the anon (RLS-enforced) client first.
     let { data: profile, error: profileErr } = await supabase
       .from('User')
-      .select('id, email, name, role, status, avatarUrl')
+      .select('id, email, name, role, status, avatarUrl, avatarId')
       .eq('id', user.id)
       .single()
 
-    // Fallback: if the anon client failed (RLS recursion, missing row, etc.),
-    // use the admin (service-role) client which bypasses RLS.
+    // Fallback: if the anon client failed, use the admin (service-role) client.
     if (profileErr && !profile) {
       const admin = createAdminSupabaseClient()
       const { data: adminProfile, error: adminErr } = await admin
         .from('User')
-        .select('id, email, name, role, status, avatarUrl')
+        .select('id, email, name, role, status, avatarUrl, avatarId')
         .eq('id', user.id)
         .single()
       if (adminErr) {
@@ -51,13 +51,35 @@ export async function getSessionUser(): Promise<AuthUser | null> {
     if (!profile) return null
     if ((profile as any).status === 'suspended') return null
 
+    const p = profile as any
+
+    // Resolve avatar: if avatarId is set, fetch the Avatar imageUrl;
+    // otherwise fall back to the legacy avatarUrl column.
+    let resolvedAvatarUrl: string | null = p.avatarUrl ?? null
+    if (p.avatarId) {
+      try {
+        const admin = createAdminSupabaseClient()
+        const { data: avatar } = await admin
+          .from('Avatar')
+          .select('imageUrl')
+          .eq('id', p.avatarId)
+          .maybeSingle()
+        if (avatar?.imageUrl) {
+          resolvedAvatarUrl = avatar.imageUrl
+        }
+      } catch {
+        // Keep fallback avatarUrl
+      }
+    }
+
     return {
-      id: (profile as any).id,
-      email: (profile as any).email,
-      name: (profile as any).name,
-      role: (profile as any).role as 'user' | 'admin',
-      status: (profile as any).status,
-      avatarUrl: (profile as any).avatarUrl,
+      id: p.id,
+      email: p.email,
+      name: p.name,
+      role: p.role as 'user' | 'admin',
+      status: p.status,
+      avatarUrl: resolvedAvatarUrl,
+      avatarId: p.avatarId ?? null,
     }
   } catch {
     return null

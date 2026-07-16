@@ -133,7 +133,10 @@ export function WatchClient({ type, id, initialEpisodeId, detail, recommendation
       </div>
 
       {/* ───────────────────────── Cinematic Hero ───────────────────────── */}
-      <section className="relative h-[55vh] min-h-[400px] w-full overflow-hidden">
+      {/* pt-16 accounts for the fixed header (h-16 ≈ 64px) so the hero
+          background starts below the header and the content is never
+          hidden behind it, regardless of screen size. */}
+      <section className="relative h-[60vh] min-h-[420px] w-full overflow-hidden pt-16">
         <SmartImage
           src={detail.backdropUrl || detail.posterUrl}
           alt={detail.title}

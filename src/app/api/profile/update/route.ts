@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
 const schema = z.object({
   name: z.string().min(2).max(60),
+  avatarId: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 })
 
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
       await supabase.auth.updateUser({ data: { name: parsed.data.name } })
 
       const update: Record<string, unknown> = { name: parsed.data.name }
+      if (parsed.data.avatarId !== undefined) {
+        update.avatarId = parsed.data.avatarId
+      }
       if (parsed.data.avatarUrl !== undefined) {
         update.avatarUrl = parsed.data.avatarUrl
       }
@@ -36,7 +40,7 @@ export async function POST(req: NextRequest) {
         .from('User')
         .update(update)
         .eq('id', user.id)
-        .select('id, email, name, role, avatarUrl')
+        .select('id, email, name, role, avatarUrl, avatarId')
         .single()
 
       if (error || !updated) {
@@ -46,20 +50,28 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const u = updated as {
-        id: string
-        email: string
-        name: string | null
-        role: string
-        avatarUrl: string | null
+      const u = updated as any
+
+      // Resolve avatarId → imageUrl for the response
+      let resolvedAvatarUrl = u.avatarUrl
+      if (u.avatarId) {
+        const admin = createAdminSupabaseClient()
+        const { data: avatar } = await admin
+          .from('Avatar')
+          .select('imageUrl')
+          .eq('id', u.avatarId)
+          .maybeSingle()
+        if (avatar?.imageUrl) resolvedAvatarUrl = avatar.imageUrl
       }
+
       return NextResponse.json({
         user: {
           id: u.id,
           email: u.email,
           name: u.name,
           role: u.role,
-          avatarUrl: u.avatarUrl,
+          avatarUrl: resolvedAvatarUrl,
+          avatarId: u.avatarId ?? null,
         },
       })
     } catch {

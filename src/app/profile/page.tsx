@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Mail, Lock, Loader2, Shield, Calendar, LogOut, Camera } from 'lucide-react'
+import { User, Mail, Lock, Loader2, Shield, LogOut } from 'lucide-react'
 import { AppShell } from '@/components/layout/app-shell'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
@@ -15,20 +15,12 @@ import { useSession } from '@/hooks/use-session'
 import { __setSessionUser } from '@/hooks/use-session'
 import { toast } from 'sonner'
 
-const AVATAR_PRESETS = [
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Gstream1&backgroundColor=b6e3f4',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Gstream2&backgroundColor=ffdfbf',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Gstream3&backgroundColor=c0aede',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Gstream4&backgroundColor=d1f4c6',
-  'https://api.dicebear.com/7.x/bottts/svg?seed=Gstream5&backgroundColor=b6e3f4',
-  'https://api.dicebear.com/7.x/bottts/svg?seed=Gstream6&backgroundColor=ffdfbf',
-]
-
 export default function ProfilePage() {
   const router = useRouter()
   const { user, loading, signOut } = useSession()
   const [name, setName] = useState('')
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null)
+  const [avatars, setAvatars] = useState<{ id: string; name: string; imageUrl: string }[]>([])
   const [savingProfile, setSavingProfile] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -40,9 +32,17 @@ export default function ProfilePage() {
     }
     if (user) {
       setName(user.name ?? '')
-      setAvatarUrl(user.avatarUrl)
+      setSelectedAvatarId((user as any).avatarId ?? null)
     }
   }, [user, loading, router])
+
+  // Fetch the site avatar library
+  useEffect(() => {
+    fetch('/api/avatars')
+      .then((r) => r.json())
+      .then((d) => setAvatars(d.avatars ?? []))
+      .catch(() => {})
+  }, [])
 
   if (loading || !user) {
     return (
@@ -61,7 +61,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/profile/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, avatarUrl }),
+        body: JSON.stringify({ name, avatarId: selectedAvatarId }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -105,7 +105,7 @@ export default function ProfilePage() {
         <div className="rounded-2xl border border-border bg-card/40 p-6">
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
             <Avatar className="h-20 w-20 border-2 border-primary/40">
-              <AvatarImage src={avatarUrl ?? undefined} alt={user.name || user.email} />
+              <AvatarImage src={user.avatarUrl ?? undefined} alt={user.name || user.email} />
               <AvatarFallback className="bg-primary/20 text-xl text-primary">
                 {(user.name || user.email)[0].toUpperCase()}
               </AvatarFallback>
@@ -125,25 +125,39 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Avatar picker */}
+          {/* Avatar library picker */}
           <div className="mt-6">
-            <Label className="mb-2 flex items-center gap-1.5 text-sm">
-              <Camera className="h-3.5 w-3.5" /> Choose an avatar
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              {AVATAR_PRESETS.map((url) => (
+            <Label className="mb-2 block text-sm">Choose an avatar</Label>
+            {avatars.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No avatars available. An admin needs to add avatars first.</p>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {avatars.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setSelectedAvatarId(a.id)}
+                    className={`relative h-14 w-14 overflow-hidden rounded-full border-2 transition-all ${
+                      selectedAvatarId === a.id ? 'border-primary scale-110 ring-2 ring-primary/30' : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
+                    title={a.name}
+                  >
+                    <img src={a.imageUrl} alt={a.name} className="h-full w-full object-cover" />
+                  </button>
+                ))}
+                {/* "None" option to clear avatar */}
                 <button
-                  key={url}
-                  onClick={() => setAvatarUrl(url)}
-                  className={`h-12 w-12 overflow-hidden rounded-full border-2 transition-all ${
-                    avatarUrl === url ? 'border-primary scale-110' : 'border-transparent opacity-70 hover:opacity-100'
+                  type="button"
+                  onClick={() => setSelectedAvatarId(null)}
+                  className={`grid h-14 w-14 place-items-center rounded-full border-2 text-xs text-muted-foreground transition-all ${
+                    selectedAvatarId === null ? 'border-primary scale-110' : 'border-border opacity-70 hover:opacity-100'
                   }`}
+                  title="Default"
                 >
-                  { }
-                  <img src={url} alt="avatar" className="h-full w-full object-cover" />
+                  <User className="h-5 w-5" />
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 

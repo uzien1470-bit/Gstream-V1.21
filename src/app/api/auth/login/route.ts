@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Fetch profile using the anon client (RLS allows self-read)
   let { data: profile, error: profileErr } = await supabase
     .from('User')
-    .select('id, email, name, role, status, avatarUrl')
+    .select('id, email, name, role, status, avatarUrl, avatarId')
     .eq('id', data.user.id)
     .single()
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         role: 'user',
         status: 'active',
       }, { onConflict: 'id' })
-      .select('id, email, name, role, status, avatarUrl')
+      .select('id, email, name, role, status, avatarUrl, avatarId')
       .single()
 
     if (createErr) {
@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       name: p.name,
       role: p.role,
       avatarUrl: p.avatarUrl,
+      avatarId: p.avatarId ?? null,
     },
   })
 }

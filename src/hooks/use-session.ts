@@ -8,6 +8,7 @@ export interface SessionUser {
   name: string | null
   role: 'user' | 'admin'
   avatarUrl: string | null
+  avatarId?: string | null
 }
 
 let cachedUser: SessionUser | null = null
